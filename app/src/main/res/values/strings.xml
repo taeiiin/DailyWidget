@@ -1,0 +1,13 @@
+<resources>
+    <string name="app_name">일일문장</string>
+
+    <!-- 위젯 설명 -->
+    <string name="widget_novel_description">소설</string>
+    <string name="widget_fantasy_description">판타지</string>
+    <string name="widget_essay_description">에세이</string>
+
+    <!-- 위젯 라벨 (위젯 목록에서 보이는 이름) -->
+    <string name="widget_novel_label">일일문장 (소설)</string>
+    <string name="widget_fantasy_label">일일문장 (판타지)</string>
+    <string name="widget_essay_label">일일문장 (에세이)</string>
+</resources>

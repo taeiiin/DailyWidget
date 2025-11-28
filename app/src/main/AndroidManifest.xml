@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- 권한 -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+
+    <application
+        android:name=".MyApp"
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.DailyWidget">
+
+        <!-- 메인 액티비티 -->
+        <activity
+            android:name=".ui.activity.MainActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.DailyWidget">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- ========== 위젯 Provider 등록 ========== -->
+
+        <!-- 위젯 설정 Activity -->
+        <activity
+            android:name=".widget.DailyWidgetConfigActivity"
+            android:exported="false"
+            android:theme="@style/Theme.DailyWidget">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
+
+        <!-- 소설 위젯 -->
+        <receiver
+            android:name=".widget.NovelWidgetProvider"
+            android:exported="false"
+            android:label="일일 소설">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/daily_widget_novel_info" />
+        </receiver>
+
+        <!-- 판타지 위젯 -->
+        <receiver
+            android:name=".widget.FantasyWidgetProvider"
+            android:exported="false"
+            android:label="일일 판타지">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/daily_widget_fantasy_info" />
+        </receiver>
+
+        <!-- 에세이 위젯 -->
+        <receiver
+            android:name=".widget.EssayWidgetProvider"
+            android:exported="false"
+            android:label="일일 에세이">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/daily_widget_essay_info" />
+        </receiver>
+
+        <!-- 위젯 리시버 (수동 새로고침 등) -->
+        <receiver
+            android:name=".widget.DailyWidgetReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.example.dailywidget.MIDNIGHT_UPDATE" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+    </application>
+
+</manifest>

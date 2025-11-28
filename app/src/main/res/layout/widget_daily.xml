@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_container"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="8dp"
+    android:background="@android:color/transparent">
+
+    <!-- 둥근 모서리 배경 컨테이너 -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/widget_rounded_background"
+        android:clipToOutline="true">
+
+        <!-- 배경 이미지들 -->
+        <ImageView
+            android:id="@+id/widget_background_solid"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:src="@drawable/widget_bg_default"
+            android:scaleType="fitXY"
+            android:contentDescription="컬러 배경"
+            android:visibility="gone"/>
+
+        <ImageView
+            android:id="@+id/widget_background_image"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="centerCrop"
+            android:contentDescription="이미지 배경"
+            android:visibility="gone"/>
+
+        <!-- ⭐ RelativeLayout으로 변경 -->
+        <RelativeLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:padding="16dp">
+
+            <!-- 메인 텍스트: 항상 중앙, source 위까지 -->
+            <TextView
+                android:id="@+id/widget_text"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_centerInParent="true"
+                android:layout_above="@+id/widget_source"
+                android:layout_alignParentTop="true"
+                android:gravity="center"
+                android:textSize="20sp"
+                android:textColor="#000000"
+                android:fontFamily="sans-serif"
+                android:lineSpacingMultiplier="1.5" />
+
+            <!-- Source: 하단에서 extra 위 -->
+            <TextView
+                android:id="@+id/widget_source"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_above="@+id/widget_extra"
+                android:gravity="end"
+                android:textSize="14sp"
+                android:textColor="#666666"
+                android:fontFamily="sans-serif"
+                android:layout_marginTop="8dp" />
+
+            <!-- Extra: 최하단 -->
+            <TextView
+                android:id="@+id/widget_extra"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_alignParentBottom="true"
+                android:gravity="end"
+                android:textSize="12sp"
+                android:textColor="#999999"
+                android:fontFamily="sans-serif"
+                android:layout_marginTop="4dp" />
+
+        </RelativeLayout>
+
+        <!-- 새로고침 버튼 -->
+        <ImageButton
+            android:id="@+id/widget_refresh_button"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_gravity="top|end"
+            android:layout_margin="8dp"
+            android:background="@android:drawable/ic_popup_sync"
+            android:contentDescription="새로고침"
+            android:scaleType="fitCenter"
+            android:alpha="0.6" />
+
+    </FrameLayout>
+
+</FrameLayout>
