@@ -44,7 +44,10 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.CornerRadius
-//import androidx.compose.runtime.composed
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.foundation.background
 
 /**
  * 문장 목록 화면
@@ -54,6 +57,7 @@ import androidx.compose.ui.geometry.CornerRadius
  * - 검색 (전체/문장/출처/작가/날짜)
  * - 정렬 (최신순/오래된순)
  * - 문장 추가/편집/삭제
+ * - 터치 가능한 스크롤바
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -73,10 +77,10 @@ fun SentenceListScreen(
 
     // 검색 상태
     var searchQuery by remember { mutableStateOf("") }
-    var isSearchExpanded by remember { mutableStateOf(false) }  // ⭐ 변수명 변경
+    var isSearchExpanded by remember { mutableStateOf(false) }
     var searchType by remember { mutableStateOf(SearchType.ALL) }
 
-    // ⭐ 정렬 상태
+    // 정렬 상태
     var sortOrder by remember { mutableStateOf(SortOrder.ASCENDING) }
     var showSortDropdown by remember { mutableStateOf(false) }
 
@@ -92,17 +96,13 @@ fun SentenceListScreen(
 
                 val q = searchQuery.trim()
 
-                // 검색 중이면 검색 쿼리 실행 (trim 처리)
                 val allSentences = if (q.isNotBlank()) {
-                    // 검색어로 호출 전 로그(디버깅)
-                    // Log.d("Search", "query='$q'")
                     when (searchType) {
                         SearchType.ALL -> repository.searchAll(q)
                         SearchType.TEXT -> repository.searchByText(q)
                         SearchType.SOURCE -> repository.searchBySource(q)
                         SearchType.WRITER -> repository.searchByWriter(q)
                         SearchType.DATE -> repository.searchByDate(q)
-
                     }
                 } else {
                     repository.getAll()
@@ -115,14 +115,11 @@ fun SentenceListScreen(
                     allSentences
                 }
 
-                // ⭐ 정렬 적용
+                // 정렬 적용
                 sentences = when (sortOrder) {
-                    SortOrder.ASCENDING -> filtered.sortedBy { it.date }  // 오래된순
-                    SortOrder.DESCENDING -> filtered.sortedByDescending { it.date }  // 최신순
+                    SortOrder.ASCENDING -> filtered.sortedBy { it.date }
+                    SortOrder.DESCENDING -> filtered.sortedByDescending { it.date }
                 }
-
-                // (디버깅) 검색 상태일 때 결과 개수 즉시 확인 가능
-                // Log.d("Search", "results=${sentences.size}")
 
                 isLoading = false
             } catch (e: Exception) {
@@ -131,7 +128,6 @@ fun SentenceListScreen(
             }
         }
     }
-
 
     LaunchedEffect(selectedGenre, searchQuery, searchType, sortOrder) {
         loadSentences()
@@ -154,15 +150,14 @@ fun SentenceListScreen(
     // 목록 화면
     Scaffold(
         modifier = modifier,
-        // ⭐ topBar 삭제
         floatingActionButton = {
             FloatingActionButton(
                 onClick = {
                     editingSentence = null
                     showEditor = true
                 },
-                containerColor = MaterialTheme.colorScheme.primary,  // ⭐ 명시적 색상 지정
-                contentColor = MaterialTheme.colorScheme.onPrimary   // ⭐ 아이콘 색상
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary
             ) {
                 Icon(Icons.Default.Add, contentDescription = "문장 추가")
             }
@@ -175,28 +170,27 @@ fun SentenceListScreen(
                 .padding(innerPadding)
         ) {
 
-            // ⭐ 새로운 검색 UI
-            // ⭐ 검색 UI (iOS 스타일)
+            // 검색 UI
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp)
             ) {
-                // 검색 입력 필드 (iOS 스타일)
+                // 검색 입력 필드
                 TextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(52.dp),  // ⭐ 48dp → 52dp로 증가
+                        .height(52.dp),
                     placeholder = {
                         Text(
                             getSearchPlaceholder(searchType),
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                            fontSize = 15.sp  // ⭐ 폰트 크기 명시
+                            fontSize = 15.sp
                         )
                     },
-                    textStyle = TextStyle(fontSize = 15.sp),  // ⭐ 입력 텍스트도 15sp
+                    textStyle = TextStyle(fontSize = 15.sp),
                     leadingIcon = {
                         Icon(
                             Icons.Default.Search,
@@ -223,18 +217,17 @@ fun SentenceListScreen(
                             loadSentences()
                         }
                     ),
-                    shape = RoundedCornerShape(12.dp),  // ⭐ 둥근 모서리
+                    shape = RoundedCornerShape(12.dp),
                     colors = TextFieldDefaults.colors(
-                        focusedContainerColor = Gray100,  // ⭐ 밝은 회색 배경
+                        focusedContainerColor = Gray100,
                         unfocusedContainerColor = Gray100,
                         disabledContainerColor = Gray100,
-                        focusedIndicatorColor = Color.Transparent,  // ⭐ 테두리 제거
+                        focusedIndicatorColor = Color.Transparent,
                         unfocusedIndicatorColor = Color.Transparent,
                         disabledIndicatorColor = Color.Transparent,
                     )
                 )
 
-                // 검색 옵션 토글
                 // 검색 옵션 확장
                 AnimatedVisibility(visible = isSearchExpanded) {
                     Column(modifier = Modifier.padding(top = 12.dp)) {
@@ -285,7 +278,7 @@ fun SentenceListScreen(
                         Text(if (isSearchExpanded) "접기" else "검색 옵션")
                     }
 
-                    // 정렬 버튼 (드롭다운)
+                    // 정렬 버튼
                     Box {
                         OutlinedButton(
                             onClick = { showSortDropdown = !showSortDropdown },
@@ -306,7 +299,6 @@ fun SentenceListScreen(
                             )
                         }
 
-                        // ⭐ 드롭다운 메뉴
                         DropdownMenu(
                             expanded = showSortDropdown,
                             onDismissRequest = { showSortDropdown = false }
@@ -396,71 +388,216 @@ fun SentenceListScreen(
                 }
 
             } else {
-                // 문장 목록
-                val scrollState = rememberLazyListState()
+                // ⭐ 문장 목록 + 터치 가능한 스크롤바
+                val listState = rememberLazyListState()
 
-                LazyColumn(
-                    state = scrollState,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .drawVerticalScrollbar(scrollState),  // ⭐ 스크롤바 추가
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-
-                    // 검색 결과 개수 표시
-                    if (searchQuery.isNotEmpty()) {
-                        item {
-                            Text(
-                                text = "검색 결과: ${sentences.size}개",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(bottom = 8.dp)
-                            )
-                        }
-                    }
-
-                    // 날짜별 그룹핑
-                    val groupedSentences = sentences.groupBy { it.date }
-
-                    groupedSentences.forEach { (date, dateSentences) ->
-
-                        // 날짜 헤더
-                        item {
-                            Text(
-                                text = formatDate(date),
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.padding(vertical = 8.dp)
-                            )
+                Box(modifier = Modifier.fillMaxSize()) {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // 검색 결과 개수 표시
+                        if (searchQuery.isNotEmpty()) {
+                            item {
+                                Text(
+                                    text = "검색 결과: ${sentences.size}개",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(bottom = 8.dp)
+                                )
+                            }
                         }
 
-                        // 해당 날짜의 문장들
-                        items(
-                            items = dateSentences,
-                            key = { it.id }
-                        ) { sentence ->
-                            SentenceListItem(
-                                sentence = sentence,
-                                searchQuery = searchQuery,
-                                onClick = {
-                                    editingSentence = sentence
-                                    showEditor = true
-                                },
-                                onDelete = {
-                                    scope.launch {
-                                        repository.delete(sentence)
-                                        loadSentences()
+                        // 날짜별 그룹핑
+                        val groupedSentences = sentences.groupBy { it.date }
+
+                        groupedSentences.forEach { (date, dateSentences) ->
+                            // 날짜 헤더
+                            item {
+                                Text(
+                                    text = formatDate(date),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.padding(vertical = 8.dp)
+                                )
+                            }
+
+                            // 해당 날짜의 문장들
+                            items(
+                                items = dateSentences,
+                                key = { it.id }
+                            ) { sentence ->
+                                SentenceListItem(
+                                    sentence = sentence,
+                                    searchQuery = searchQuery,
+                                    onClick = {
+                                        editingSentence = sentence
+                                        showEditor = true
+                                    },
+                                    onDelete = {
+                                        scope.launch {
+                                            repository.delete(sentence)
+                                            loadSentences()
+                                        }
                                     }
-                                }
-                            )
+                                )
+                            }
                         }
                     }
+
+                    // ⭐ 터치 가능한 스크롤바
+                    LazyColumnScrollbar(
+                        listState = listState,
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .fillMaxHeight()
+                            .padding(top = 8.dp, bottom = 8.dp)
+                    )
                 }
             }
         }
     }
 }
+
+
+// ==================== 터치 가능한 스크롤바 ====================
+
+// ==================== 터치 가능한 스크롤바 ====================
+
+@Composable
+fun LazyColumnScrollbar(
+    listState: LazyListState,
+    modifier: Modifier = Modifier
+) {
+    if (listState.layoutInfo.totalItemsCount == 0) return
+
+    val viewportHeight = listState.layoutInfo.viewportEndOffset - listState.layoutInfo.viewportStartOffset
+    if (viewportHeight <= 0) return
+
+    // 스크롤바 상태를 remember로 관리
+    var isDragging by remember { mutableStateOf(false) }
+    var dragStartOffset by remember { mutableStateOf(0f) }
+
+    // 아이템 평균 높이 계산 (안정적인 값 사용)
+    val estimatedItemHeight = remember(listState.layoutInfo.visibleItemsInfo) {
+        val visibleItems = listState.layoutInfo.visibleItemsInfo
+        if (visibleItems.isNotEmpty()) {
+            visibleItems.sumOf { it.size } / visibleItems.size
+        } else {
+            100
+        }
+    }
+
+    val totalContentHeight = listState.layoutInfo.totalItemsCount * estimatedItemHeight
+
+    // 스크롤이 필요 없으면 숨김
+    if (totalContentHeight <= viewportHeight) return
+
+    // 스크롤바 높이 계산 (고정값)
+    val scrollbarHeight = remember(viewportHeight, totalContentHeight) {
+        (viewportHeight.toFloat() / totalContentHeight * viewportHeight)
+            .coerceAtLeast(40f)
+            .coerceAtMost(viewportHeight.toFloat())
+    }
+
+    // 드래그 중이 아닐 때만 스크롤 위치 업데이트
+    val scrollbarOffset = if (!isDragging) {
+        val firstVisibleItemIndex = listState.firstVisibleItemIndex
+        val firstVisibleItemScrollOffset = listState.firstVisibleItemScrollOffset
+
+        val scrolledAmount = firstVisibleItemIndex * estimatedItemHeight + firstVisibleItemScrollOffset
+        val maxScrollAmount = totalContentHeight - viewportHeight
+        val scrollProgress = if (maxScrollAmount > 0) {
+            (scrolledAmount.toFloat() / maxScrollAmount).coerceIn(0f, 1f)
+        } else {
+            0f
+        }
+
+        val maxScrollbarOffset = viewportHeight - scrollbarHeight
+        (scrollProgress * maxScrollbarOffset).coerceIn(0f, maxScrollbarOffset)
+    } else {
+        dragStartOffset
+    }
+
+    val scope = rememberCoroutineScope()
+    val maxScrollbarOffset = viewportHeight - scrollbarHeight
+    val maxScrollAmount = totalContentHeight - viewportHeight
+
+    Box(
+        modifier = modifier
+            .width(16.dp)
+            .fillMaxHeight()
+    ) {
+        Box(
+            modifier = Modifier
+                .offset { IntOffset(0, scrollbarOffset.toInt()) }
+                .width(if (isDragging) 12.dp else 8.dp)
+                .height(scrollbarHeight.dp)
+                .background(
+                    color = if (isDragging) {
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.9f)
+                    } else {
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
+                    },
+                    shape = RoundedCornerShape(if (isDragging) 6.dp else 4.dp)
+                )
+                .pointerInput(Unit) {
+                    var initialTouchY = 0f
+                    var initialScrollbarOffset = 0f
+
+                    detectVerticalDragGestures(
+                        onDragStart = { offset ->
+                            isDragging = true
+                            initialTouchY = offset.y
+                            initialScrollbarOffset = scrollbarOffset
+                        },
+                        onDragEnd = {
+                            isDragging = false
+                        },
+                        onDragCancel = {
+                            isDragging = false
+                        },
+                        onVerticalDrag = { change, _ ->
+                            change.consume()
+
+                            // 현재 터치 위치 기준으로 계산
+                            val currentTouchY = change.position.y
+                            val touchDelta = currentTouchY - initialTouchY
+
+                            // 새로운 스크롤바 오프셋
+                            val newScrollbarOffset = (initialScrollbarOffset + touchDelta)
+                                .coerceIn(0f, maxScrollbarOffset)
+
+                            dragStartOffset = newScrollbarOffset
+
+                            // 스크롤 진행도 계산
+                            val newScrollProgress = if (maxScrollbarOffset > 0) {
+                                newScrollbarOffset / maxScrollbarOffset
+                            } else {
+                                0f
+                            }
+
+                            // 목표 스크롤 위치 계산
+                            val targetScrollAmount = (newScrollProgress * maxScrollAmount).toInt()
+                            val targetIndex = (targetScrollAmount / estimatedItemHeight)
+                                .coerceIn(0, listState.layoutInfo.totalItemsCount - 1)
+                            val targetOffset = (targetScrollAmount % estimatedItemHeight)
+                                .coerceAtLeast(0)
+
+                            // 스크롤 적용 (코루틴 없이 동기적으로)
+                            scope.launch {
+                                listState.scrollToItem(targetIndex, targetOffset)
+                            }
+                        }
+                    )
+                }
+        )
+    }
+}
+
+// ==================== 기타 컴포넌트 ====================
 
 /**
  * 검색 타입
@@ -474,11 +611,11 @@ enum class SearchType(val label: String) {
 }
 
 /**
- * ⭐ 정렬 순서
+ * 정렬 순서
  */
 enum class SortOrder(val label: String) {
-    ASCENDING("오래된순"),      // 날짜 오름차순 (0101 → 1231)
-    DESCENDING("최신순")        // 날짜 내림차순 (1231 → 0101)
+    ASCENDING("오래된순"),
+    DESCENDING("최신순")
 }
 
 /**
@@ -531,6 +668,7 @@ fun SentenceListItem(
 
                 // 출처, 작가 & 장르
                 Row(
+                    modifier = Modifier.fillMaxWidth(),  // ⭐ 추가
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -547,17 +685,26 @@ fun SentenceListItem(
                         Text(
                             text = sourceWriter,
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,  // ⭐ 추가
+                            overflow = TextOverflow.Ellipsis,  // ⭐ 추가
+                            modifier = Modifier.weight(1f, fill = false)  // ⭐ 추가: 공간만큼만 차지
                         )
                     }
 
-                    // 장르
+                    // 장르 (항상 표시)
                     sentence.genre?.let {
-                        Text(
-                            text = if (sourceWriter.isNotEmpty()) " • ${getGenreLabel(it)}" else getGenreLabel(it),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary
-                        )
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer
+                        ) {
+                            Text(
+                                text = getGenreLabel(it),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -620,62 +767,5 @@ private fun getGenreLabel(genre: String): String {
         "fantasy" -> "판타지"
         "essay" -> "에세이"
         else -> genre
-    }
-}
-
-/**
- * iOS 스타일 스크롤바
- */
-@Composable
-fun Modifier.drawVerticalScrollbar(
-    state: LazyListState
-): Modifier {
-    // ⭐ 스크롤 후 1.5초 동안 유지
-    var hideScrollbar by remember { mutableStateOf(false) }
-
-    LaunchedEffect(state.isScrollInProgress) {
-        if (state.isScrollInProgress) {
-            hideScrollbar = false
-        } else {
-            kotlinx.coroutines.delay(1500)  // ⭐ 1.5초 대기
-            hideScrollbar = true
-        }
-    }
-
-    val targetAlpha = if (!hideScrollbar) 0.6f else 0f  // ⭐ 0.5f → 0.6f (더 진하게)
-    val alpha by animateFloatAsState(
-        targetValue = targetAlpha,
-        animationSpec = tween(
-            durationMillis = if (targetAlpha > 0f) 150 else 300,  // ⭐ 사라질 때 300ms
-            delayMillis = 0
-        ),
-        label = "scrollbar"
-    )
-
-    return drawWithContent {
-        drawContent()
-
-        val firstVisibleElementIndex = state.layoutInfo.visibleItemsInfo.firstOrNull()?.index
-
-        if (firstVisibleElementIndex != null && alpha > 0f) {
-            val totalItemsCount = state.layoutInfo.totalItemsCount
-            val visibleItemsCount = state.layoutInfo.visibleItemsInfo.size
-
-            if (totalItemsCount > visibleItemsCount) {
-                val elementHeight = size.height / totalItemsCount
-                val scrollbarHeight = visibleItemsCount * elementHeight * 10
-                val scrollbarOffsetY = firstVisibleElementIndex * elementHeight
-
-                val scrollbarWidth = 4.dp.toPx()
-                val scrollbarX = size.width - scrollbarWidth - 8.dp.toPx()  // ⭐ 여백도 증가
-
-                drawRoundRect(
-                    color = Color.Gray.copy(alpha = alpha),
-                    topLeft = Offset(scrollbarX, scrollbarOffsetY),
-                    size = Size(scrollbarWidth, scrollbarHeight),
-                    cornerRadius = CornerRadius(scrollbarWidth / 2)
-                )
-            }
-        }
     }
 }

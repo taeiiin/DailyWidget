@@ -96,4 +96,10 @@ dependencies {
     implementation("com.github.skydoves:colorpicker-compose:1.0.5")
     implementation("io.coil-kt:coil-compose:2.5.0")
 
+    implementation("com.godaddy.android.colorpicker:compose-color-picker:0.7.0")
+
+    // ⭐ 스크롤바 라이브러리
+    implementation("com.github.nanihadesuka:LazyColumnScrollbar:2.2.0")
+
+
 }

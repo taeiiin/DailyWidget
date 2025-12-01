@@ -9,7 +9,7 @@
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen"
     android:description="@string/widget_essay_description"
-    android:previewImage="@mipmap/ic_launcher"
+    android:previewImage="@mipmap/ic_launcher2"
     android:configure="com.example.dailywidget.widget.DailyWidgetConfigActivity"
     android:widgetFeatures="reconfigurable"
     >

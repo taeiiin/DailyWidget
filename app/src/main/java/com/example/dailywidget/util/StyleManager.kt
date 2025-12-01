@@ -63,6 +63,25 @@ object StyleManager {
                 isBold = false
             ),
             sourceStyle = TextStyle(
+                color = androidx.compose.ui.graphics.Color.Black,
+                align = TextAlign.End,
+                isBold = false
+            ),
+            extraStyle = TextStyle(
+                color = androidx.compose.ui.graphics.Color.Black,
+                align = TextAlign.End,
+                isBold = false
+            )
+        ),
+        WidgetStyle(
+            id = 2,
+            name = "기본 (검정&회색)",
+            textStyle = TextStyle(
+                color = androidx.compose.ui.graphics.Color.Black,
+                align = TextAlign.Center,
+                isBold = false
+            ),
+            sourceStyle = TextStyle(
                 color = androidx.compose.ui.graphics.Color.DarkGray,
                 align = TextAlign.End,
                 isBold = false
@@ -74,7 +93,26 @@ object StyleManager {
             )
         ),
         WidgetStyle(
-            id = 2,
+            id = 3,
+            name = "어두운 배경용 (흰색)",
+            textStyle = TextStyle(
+                color = androidx.compose.ui.graphics.Color.White,
+                align = TextAlign.Center,
+                isBold = false
+            ),
+            sourceStyle = TextStyle(
+                color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.9f),
+                align = TextAlign.End,
+                isBold = false
+            ),
+            extraStyle = TextStyle(
+                color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.8f),
+                align = TextAlign.End,
+                isBold = false
+            )
+        ),
+        WidgetStyle(
+            id = 4,
             name = "모던 (진한 회색)",
             textStyle = TextStyle(
                 color = androidx.compose.ui.graphics.Color(0xFF2C3E50),
@@ -93,7 +131,7 @@ object StyleManager {
             )
         ),
         WidgetStyle(
-            id = 3,
+            id = 5,
             name = "따뜻한 (갈색)",
             textStyle = TextStyle(
                 color = androidx.compose.ui.graphics.Color(0xFF5D4037),
@@ -112,7 +150,7 @@ object StyleManager {
             )
         ),
         WidgetStyle(
-            id = 4,
+            id = 6,
             name = "차분한 (네이비)",
             textStyle = TextStyle(
                 color = androidx.compose.ui.graphics.Color(0xFF1A237E),
@@ -131,7 +169,7 @@ object StyleManager {
             )
         ),
         WidgetStyle(
-            id = 5,
+            id = 7,
             name = "우아한 (보라)",
             textStyle = TextStyle(
                 color = androidx.compose.ui.graphics.Color(0xFF4A148C),
@@ -150,7 +188,7 @@ object StyleManager {
             )
         ),
         WidgetStyle(
-            id = 6,
+            id = 8,
             name = "생동감 (초록)",
             textStyle = TextStyle(
                 color = androidx.compose.ui.graphics.Color(0xFF1B5E20),
@@ -169,7 +207,7 @@ object StyleManager {
             )
         ),
         WidgetStyle(
-            id = 7,
+            id = 9,
             name = "활기찬 (주황)",
             textStyle = TextStyle(
                 color = androidx.compose.ui.graphics.Color(0xFFE65100),
@@ -188,7 +226,7 @@ object StyleManager {
             )
         ),
         WidgetStyle(
-            id = 8,
+            id = 10,
             name = "부드러운 (핑크)",
             textStyle = TextStyle(
                 color = androidx.compose.ui.graphics.Color(0xFFC2185B),
@@ -207,7 +245,7 @@ object StyleManager {
             )
         ),
         WidgetStyle(
-            id = 9,
+            id = 11,
             name = "시원한 (청록)",
             textStyle = TextStyle(
                 color = androidx.compose.ui.graphics.Color(0xFF006064),
@@ -226,7 +264,7 @@ object StyleManager {
             )
         ),
         WidgetStyle(
-            id = 10,
+            id = 11,
             name = "고급스러운 (금색)",
             textStyle = TextStyle(
                 color = androidx.compose.ui.graphics.Color(0xFF9C6B00),
@@ -240,25 +278,6 @@ object StyleManager {
             ),
             extraStyle = TextStyle(
                 color = androidx.compose.ui.graphics.Color(0xFFD4AF37),
-                align = TextAlign.End,
-                isBold = false
-            )
-        ),
-        WidgetStyle(
-            id = 11,
-            name = "어두운 배경용 (흰색)",
-            textStyle = TextStyle(
-                color = androidx.compose.ui.graphics.Color.White,
-                align = TextAlign.Center,
-                isBold = false
-            ),
-            sourceStyle = TextStyle(
-                color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.9f),
-                align = TextAlign.End,
-                isBold = false
-            ),
-            extraStyle = TextStyle(
-                color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.8f),
                 align = TextAlign.End,
                 isBold = false
             )

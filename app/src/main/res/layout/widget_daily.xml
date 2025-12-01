@@ -31,49 +31,59 @@
             android:contentDescription="이미지 배경"
             android:visibility="gone"/>
 
-        <!-- ⭐ RelativeLayout으로 변경 -->
+        <!-- RelativeLayout -->
         <RelativeLayout
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:padding="16dp">
 
-            <!-- 메인 텍스트: 항상 중앙, source 위까지 -->
+            <!-- ⭐ 하단 컨테이너 (source + extra를 묶음) -->
+            <LinearLayout
+                android:id="@+id/widget_bottom_container"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_alignParentBottom="true"
+                android:orientation="vertical">
+
+                <!-- Source -->
+                <TextView
+                    android:id="@+id/widget_source"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="end"
+                    android:textSize="14sp"
+                    android:textColor="#666666"
+                    android:fontFamily="sans-serif"
+                    android:visibility="visible" />
+
+                <!-- Extra -->
+                <TextView
+                    android:id="@+id/widget_extra"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="end"
+                    android:textSize="12sp"
+                    android:textColor="#999999"
+                    android:fontFamily="sans-serif"
+                    android:layout_marginTop="4dp"
+                    android:visibility="visible" />
+
+            </LinearLayout>
+
+            <!-- ⭐ 메인 텍스트: 상단부터 하단 컨테이너 위까지, 중앙 정렬 -->
             <TextView
                 android:id="@+id/widget_text"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_centerInParent="true"
-                android:layout_above="@+id/widget_source"
                 android:layout_alignParentTop="true"
+                android:layout_above="@+id/widget_bottom_container"
+                android:layout_centerVertical="true"
                 android:gravity="center"
                 android:textSize="20sp"
                 android:textColor="#000000"
                 android:fontFamily="sans-serif"
-                android:lineSpacingMultiplier="1.5" />
-
-            <!-- Source: 하단에서 extra 위 -->
-            <TextView
-                android:id="@+id/widget_source"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_above="@+id/widget_extra"
-                android:gravity="end"
-                android:textSize="14sp"
-                android:textColor="#666666"
-                android:fontFamily="sans-serif"
-                android:layout_marginTop="8dp" />
-
-            <!-- Extra: 최하단 -->
-            <TextView
-                android:id="@+id/widget_extra"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_alignParentBottom="true"
-                android:gravity="end"
-                android:textSize="12sp"
-                android:textColor="#999999"
-                android:fontFamily="sans-serif"
-                android:layout_marginTop="4dp" />
+                android:lineSpacingMultiplier="1.0"
+                android:visibility="visible" />
 
         </RelativeLayout>
 
@@ -87,7 +97,8 @@
             android:background="@android:drawable/ic_popup_sync"
             android:contentDescription="새로고침"
             android:scaleType="fitCenter"
-            android:alpha="0.6" />
+            android:alpha="0.6"
+            android:visibility="visible" />
 
     </FrameLayout>
 

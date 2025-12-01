@@ -10,6 +10,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -23,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -37,6 +39,8 @@ import com.example.dailywidget.util.StyleManager
 import com.github.skydoves.colorpicker.compose.*
 import kotlinx.coroutines.launch
 import coil.compose.AsyncImage
+import com.godaddy.android.colorpicker.ClassicColorPicker
+import com.godaddy.android.colorpicker.HsvColor
 import java.io.File
 
 class DailyWidgetConfigActivity : ComponentActivity() {
@@ -184,11 +188,15 @@ fun WidgetConfigScreen(
                         .clickable { showStyleDialog = true }
                 ) {
                     Row(
-                        modifier = Modifier.padding(16.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column {
+                        Column(
+                            modifier = Modifier.weight(1f)
+                        ) {
                             Text(
                                 "스타일 $selectedStyleId - ${StyleManager.getStyleDescription(selectedStyleId)}",
                                 style = MaterialTheme.typography.bodyLarge
@@ -199,7 +207,12 @@ fun WidgetConfigScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        Icon(Icons.Default.Palette, null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Icon(
+                            Icons.Default.Palette,
+                            contentDescription = "스타일 아이콘",
+                            tint = MaterialTheme.colorScheme.primary  // ⭐ 추가: 색상
+                        )
                     }
                 }
 
@@ -211,7 +224,9 @@ fun WidgetConfigScreen(
                         .clickable { showBackgroundDialog = true }
                 ) {
                     Row(
-                        modifier = Modifier.padding(16.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()  // ⭐ 추가
+                            .padding(16.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -221,7 +236,9 @@ fun WidgetConfigScreen(
                             currentBgConfig.hexColor == "#FFFFFF" -> "기본 배경 (흰색)"
                             else -> "컬러 배경"
                         }
-                        Column {
+                        Column(
+                            modifier = Modifier.weight(1f)  // ⭐ 추가: 남은 공간 모두 차지
+                        ) {
                             Text(desc, style = MaterialTheme.typography.bodyLarge)
                             Text(
                                 "탭하여 변경",
@@ -229,7 +246,12 @@ fun WidgetConfigScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        Icon(Icons.Default.Image, null)
+                        Spacer(modifier = Modifier.width(8.dp))  // ⭐ 추가: 간격
+                        Icon(
+                            Icons.Default.Image,
+                            contentDescription = "배경 아이콘",
+                            tint = MaterialTheme.colorScheme.primary  // ⭐ 추가: 색상
+                        )
                     }
                 }
 
@@ -512,7 +534,12 @@ fun BackgroundSelectionDialog(
                     Tab(
                         selected = selectedTab == 1,
                         onClick = { selectedTab = 1 },
-                        text = { Text("그라데이션") }
+                        text = {
+                            Text(
+                                "그라데이션",
+                                fontSize = 12.sp  // ⭐ 작은 폰트
+                            )
+                        }
                     )
                     Tab(
                         selected = selectedTab == 2,
@@ -655,8 +682,15 @@ fun CustomColorPicker(
     currentAlpha: Float,
     onColorSelected: (String) -> Unit
 ) {
-    val controller = rememberColorPickerController()
-    var selectedHex by remember { mutableStateOf("#FFFFFF") }
+    var selectedColor by remember {
+        mutableStateOf(
+            try {
+                HsvColor.from(Color(android.graphics.Color.parseColor(currentBgConfig.hexColor)))
+            } catch (e: Exception) {
+                HsvColor.from(Color.White)
+            }
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -664,33 +698,50 @@ fun CustomColorPicker(
             .height(400.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        HsvColorPicker(
+        // ⭐ 컬러 피커
+        ClassicColorPicker(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(300.dp),
-            controller = controller,
-            onColorChanged = { colorEnvelope ->
-                val hex = "#" + colorEnvelope.hexCode.substring(2) // ARGB → RGB
-                selectedHex = hex
+            color = selectedColor,
+            onColorChanged = { hsvColor ->
+                selectedColor = hsvColor
+                val hex = String.format("#%06X", 0xFFFFFF and hsvColor.toColor().toArgb())
                 onColorSelected("solid:$hex,alpha:${"%.2f".format(currentAlpha)}")
             }
         )
 
-        // 선택된 색상 미리보기
+        // ⭐ 선택된 색상 미리보기
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text("선택된 색상", style = MaterialTheme.typography.bodyMedium)
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .background(
-                        color = Color(android.graphics.Color.parseColor(selectedHex)),
-                        shape = RoundedCornerShape(8.dp)
-                    )
-            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val hex = String.format("#%06X", 0xFFFFFF and selectedColor.toColor().toArgb())
+                Text(
+                    hex,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                )
+                Box(
+                    modifier = Modifier
+                        .size(50.dp)
+                        .background(
+                            color = selectedColor.toColor(),
+                            shape = RoundedCornerShape(8.dp)
+                        )
+                        .border(
+                            width = 2.dp,
+                            color = Color.Gray.copy(alpha = 0.5f),
+                            shape = RoundedCornerShape(8.dp)
+                        )
+                )
+            }
         }
     }
 }
@@ -711,12 +762,17 @@ fun GradientTabContent(
     var direction by remember {
         mutableStateOf(currentBgConfig.gradientDirection ?: "horizontal")
     }
-    val alpha = 1.0f  // ⭐ 항상 100% 불투명
+    val alpha = 1.0f
     var showStartColorPicker by remember { mutableStateOf(false) }
     var showEndColorPicker by remember { mutableStateOf(false) }
 
     val updateGradient: () -> Unit = {
         onGradientSelected("gradient:$startColor,$endColor,$direction,alpha:${"%.2f".format(alpha)}")
+    }
+
+    // ⭐ 처음 렌더링될 때 자동으로 현재 그라디언트 적용
+    LaunchedEffect(Unit) {
+        updateGradient()
     }
 
     Column(
@@ -769,7 +825,6 @@ fun GradientTabContent(
                             )
                         )
                     },
-                    alpha = alpha,
                     shape = RoundedCornerShape(8.dp)
                 )
         )
@@ -918,6 +973,8 @@ fun GradientColorPickerDialog(
     onDismiss: () -> Unit
 ) {
     var colorSubTab by remember { mutableStateOf(0) }
+    // ⭐ 내부에서 임시로 색상을 관리
+    var tempSelectedColor by remember { mutableStateOf(currentColor) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -941,19 +998,39 @@ fun GradientColorPickerDialog(
 
                 when (colorSubTab) {
                     0 -> GradientPalettePicker(
-                        selectedColor = currentColor,
-                        onColorSelected = onColorSelected
+                        selectedColor = tempSelectedColor,
+                        onColorSelected = { color ->
+                            // ⭐ 팔레트는 즉시 적용하고 닫기
+                            tempSelectedColor = color
+                            onColorSelected(color)
+                            onDismiss()
+                        }
                     )
                     1 -> GradientCustomPicker(
-                        selectedColor = currentColor,
-                        onColorSelected = onColorSelected
+                        selectedColor = tempSelectedColor,
+                        onColorSelected = { color ->
+                            // ⭐ 커스텀은 임시 저장만 (닫지 않음)
+                            tempSelectedColor = color
+                        }
                     )
                 }
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(
+                onClick = {
+                    // ⭐ 확인 버튼 누를 때만 실제 적용
+                    onColorSelected(tempSelectedColor)
+                    onDismiss()
+                }
+            ) {
                 Text("확인")
+            }
+        },
+        dismissButton = {
+            // ⭐ 취소 버튼 추가
+            TextButton(onClick = onDismiss) {
+                Text("취소")
             }
         }
     )
@@ -1017,8 +1094,15 @@ fun GradientCustomPicker(
     selectedColor: String,
     onColorSelected: (String) -> Unit
 ) {
-    val controller = rememberColorPickerController()
-    var selectedHex by remember { mutableStateOf(selectedColor) }
+    var currentColor by remember {
+        mutableStateOf(
+            try {
+                HsvColor.from(Color(android.graphics.Color.parseColor(selectedColor)))
+            } catch (e: Exception) {
+                HsvColor.from(Color.White)
+            }
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -1026,32 +1110,50 @@ fun GradientCustomPicker(
             .height(400.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        HsvColorPicker(
+        // ⭐ 컬러 피커
+        ClassicColorPicker(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(300.dp),
-            controller = controller,
-            onColorChanged = { colorEnvelope ->
-                val hex = "#" + colorEnvelope.hexCode.substring(2)
-                selectedHex = hex
+            color = currentColor,
+            onColorChanged = { hsvColor ->
+                currentColor = hsvColor
+                val hex = String.format("#%06X", 0xFFFFFF and hsvColor.toColor().toArgb())
                 onColorSelected(hex)
             }
         )
 
+        // ⭐ 선택된 색상 미리보기
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text("선택된 색상", style = MaterialTheme.typography.bodyMedium)
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .background(
-                        color = Color(android.graphics.Color.parseColor(selectedHex)),
-                        shape = RoundedCornerShape(8.dp)
-                    )
-            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val hex = String.format("#%06X", 0xFFFFFF and currentColor.toColor().toArgb())
+                Text(
+                    hex,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                )
+                Box(
+                    modifier = Modifier
+                        .size(50.dp)
+                        .background(
+                            color = currentColor.toColor(),
+                            shape = RoundedCornerShape(8.dp)
+                        )
+                        .border(
+                            width = 2.dp,
+                            color = Color.Gray.copy(alpha = 0.5f),
+                            shape = RoundedCornerShape(8.dp)
+                        )
+                )
+            }
         }
     }
 }
