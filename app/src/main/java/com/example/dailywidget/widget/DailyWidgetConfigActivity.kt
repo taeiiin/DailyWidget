@@ -8,6 +8,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import kotlinx.coroutines.flow.first
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
@@ -16,6 +17,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.SwipeLeft
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -26,6 +31,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.style.TextAlign
@@ -36,11 +42,14 @@ import com.example.dailywidget.ui.components.StylePreview
 import com.example.dailywidget.ui.theme.DailyWidgetTheme
 import com.example.dailywidget.util.ImageManager
 import com.example.dailywidget.util.StyleManager
+import androidx.compose.material.icons.filled.Category
 import com.github.skydoves.colorpicker.compose.*
 import kotlinx.coroutines.launch
 import coil.compose.AsyncImage
 import com.godaddy.android.colorpicker.ClassicColorPicker
 import com.godaddy.android.colorpicker.HsvColor
+import androidx.compose.ui.text.font.FontWeight
+import com.example.dailywidget.util.ThemeManager
 import java.io.File
 
 class DailyWidgetConfigActivity : ComponentActivity() {
@@ -79,29 +88,53 @@ class DailyWidgetConfigActivity : ComponentActivity() {
         scope.launch {
             try {
                 val dataStoreManager = DataStoreManager(this@DailyWidgetConfigActivity)
-                dataStoreManager.saveWidgetConfig(
-                    appWidgetId,
-                    DataStoreManager.WidgetConfig(
-                        styleId = styleId,
-                        backgroundId = backgroundId
-                    )
-                )
 
-                val appWidgetManager = AppWidgetManager.getInstance(this@DailyWidgetConfigActivity)
-                val info = appWidgetManager.getAppWidgetInfo(appWidgetId)
-                val genre = when {
-                    info?.provider?.className?.endsWith("NovelWidgetProvider") == true -> "novel"
-                    info?.provider?.className?.endsWith("FantasyWidgetProvider") == true -> "fantasy"
-                    info?.provider?.className?.endsWith("EssayWidgetProvider") == true -> "essay"
-                    else -> "novel"
+                // ⭐ 1. 장르 조회
+                val genreId = dataStoreManager.getWidgetGenre(appWidgetId)
+                android.util.Log.d("WidgetConfig", "💾 Saving config with genreId: $genreId")
+
+                // ⭐ 2. 설정 저장
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    dataStoreManager.saveWidgetConfig(
+                        appWidgetId,
+                        DataStoreManager.WidgetConfig(
+                            styleId = styleId,
+                            backgroundId = backgroundId,
+                            genreId = genreId
+                        )
+                    )
                 }
 
-                DailyWidgetProvider.updateWidgets(
-                    this@DailyWidgetConfigActivity,
-                    appWidgetManager,
-                    intArrayOf(appWidgetId),
-                    genre
-                )
+                kotlinx.coroutines.delay(800)
+
+                // ⭐ 3. 확인
+                val savedGenre = dataStoreManager.getWidgetGenre(appWidgetId)
+                android.util.Log.d("WidgetConfig", "✅ Verified genre: $savedGenre")
+
+                // ⭐ 4. 수동 업데이트
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    val appWidgetManager = AppWidgetManager.getInstance(this@DailyWidgetConfigActivity)
+                    val provider = UnifiedWidgetProvider()
+
+                    android.util.Log.d("WidgetConfig", "🔄 Manual update with genre: $savedGenre")
+
+                    provider.updateAppWidget(
+                        context = this@DailyWidgetConfigActivity,
+                        appWidgetManager = appWidgetManager,
+                        appWidgetId = appWidgetId,
+                        genre = savedGenre,
+                        forceRefresh = true
+                    )
+                }
+
+                // ⭐ 5. 대기
+                kotlinx.coroutines.delay(1500)  // ⭐ 1.5초 대기
+
+                // ⭐ 6. 잠금 해제
+                android.util.Log.d("WidgetConfig", "🔓 Unlocking widget $appWidgetId")
+                dataStoreManager.setWidgetUpdateLock(appWidgetId, false)
+
+                android.util.Log.d("WidgetConfig", "✅ Config completed")
 
                 val resultValue = Intent().apply {
                     putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
@@ -110,6 +143,7 @@ class DailyWidgetConfigActivity : ComponentActivity() {
                 finish()
             } catch (e: Exception) {
                 e.printStackTrace()
+                android.util.Log.e("WidgetConfig", "❌ Error", e)
                 finish()
             }
         }
@@ -125,6 +159,7 @@ fun WidgetConfigScreen(
 ) {
     val context = LocalContext.current
     val dataStoreManager = remember { DataStoreManager(context) }
+    val scope = rememberCoroutineScope()
     val initialConfig = dataStoreManager.getWidgetConfigFlow(appWidgetId).collectAsState(
         initial = DataStoreManager.WidgetConfig(
             StyleManager.DEFAULT_STYLE_ID,
@@ -137,23 +172,54 @@ fun WidgetConfigScreen(
     var showStyleDialog by remember { mutableStateOf(false) }
     var showBackgroundDialog by remember { mutableStateOf(false) }
 
+    // ⭐ 장르 이름 가져오기 (제목용)
+    var genreDisplayName by remember { mutableStateOf("") }
+
+    LaunchedEffect(Unit) {
+        val genreId = dataStoreManager.getWidgetGenre(appWidgetId)
+        genreDisplayName = dataStoreManager.getGenreDisplayName(genreId)
+    }
+
     LaunchedEffect(initialConfig.value) {
         selectedStyleId = initialConfig.value.styleId
         selectedBackgroundId = initialConfig.value.backgroundId
     }
 
     val currentBgConfig = parseBackgroundId(selectedBackgroundId)
-    val currentAlpha by remember(selectedBackgroundId) { mutableStateOf(currentBgConfig.alpha) }
+
+    // ⭐ alpha를 State로 관리 (반응형)
+    var currentAlpha by remember(selectedBackgroundId) { mutableStateOf(currentBgConfig.alpha) }
     val currentHex by remember(selectedBackgroundId) { mutableStateOf(currentBgConfig.hexColor) }
 
+    // ⭐ 배경 업데이트 함수들
     val updateSolidBackgroundId: (hex: String, alpha: Float) -> Unit = { hex, alpha ->
         selectedBackgroundId = "solid:$hex,alpha:${"%.2f".format(alpha)}"
+        currentAlpha = alpha
     }
+
+    val updateImageBackgroundId: (imageName: String, alpha: Float) -> Unit = { imageName, alpha ->
+        selectedBackgroundId = "image:$imageName,alpha:${"%.2f".format(alpha)}"
+        currentAlpha = alpha
+    }
+
+    val updateGradientBackgroundId: (start: String, end: String, dir: String, alpha: Float) -> Unit =
+        { start, end, dir, alpha ->
+            selectedBackgroundId = "gradient:$start,$end,$dir,alpha:${"%.2f".format(alpha)}"
+            currentAlpha = alpha
+        }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("위젯 설정") },
+                title = {
+                    Text(
+                        if (genreDisplayName.isNotEmpty()) {
+                            "$genreDisplayName 위젯 설정"  // ⭐ 장르 이름 포함
+                        } else {
+                            "위젯 설정"
+                        }
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onCancel) {
                         Icon(Icons.Default.Close, "취소")
@@ -211,7 +277,7 @@ fun WidgetConfigScreen(
                         Icon(
                             Icons.Default.Palette,
                             contentDescription = "스타일 아이콘",
-                            tint = MaterialTheme.colorScheme.primary  // ⭐ 추가: 색상
+                            tint = MaterialTheme.colorScheme.primary
                         )
                     }
                 }
@@ -225,7 +291,7 @@ fun WidgetConfigScreen(
                 ) {
                     Row(
                         modifier = Modifier
-                            .fillMaxWidth()  // ⭐ 추가
+                            .fillMaxWidth()
                             .padding(16.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
@@ -237,7 +303,7 @@ fun WidgetConfigScreen(
                             else -> "컬러 배경"
                         }
                         Column(
-                            modifier = Modifier.weight(1f)  // ⭐ 추가: 남은 공간 모두 차지
+                            modifier = Modifier.weight(1f)
                         ) {
                             Text(desc, style = MaterialTheme.typography.bodyLarge)
                             Text(
@@ -246,45 +312,122 @@ fun WidgetConfigScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        Spacer(modifier = Modifier.width(8.dp))  // ⭐ 추가: 간격
+                        Spacer(modifier = Modifier.width(8.dp))
                         Icon(
                             Icons.Default.Image,
                             contentDescription = "배경 아이콘",
-                            tint = MaterialTheme.colorScheme.primary  // ⭐ 추가: 색상
+                            tint = MaterialTheme.colorScheme.primary
                         )
                     }
                 }
 
-                // 3. 투명도 (단색 또는 그라디언트일 때만)
-                if (currentBgConfig.isSolid || currentBgConfig.isGradient) {
-                    Column {
-                        Text(
-                            "불투명도 (${"%.0f".format(currentAlpha * 100)}%)",
-                            style = MaterialTheme.typography.titleMedium
-                        )
-                        Slider(
-                            value = currentAlpha,
-                            onValueChange = {
-                                if (currentBgConfig.isSolid) {
-                                    updateSolidBackgroundId(currentHex, it)
-                                } else if (currentBgConfig.isGradient &&
-                                    currentBgConfig.gradientStartColor != null &&
-                                    currentBgConfig.gradientEndColor != null &&
-                                    currentBgConfig.gradientDirection != null) {
-                                    selectedBackgroundId = "gradient:${currentBgConfig.gradientStartColor},${currentBgConfig.gradientEndColor},${currentBgConfig.gradientDirection},alpha:${"%.2f".format(it)}"
+                // ⭐ 3. 투명도 슬라이더 (모든 배경 타입에서 표시)
+                Column {
+                    Text(
+                        "불투명도 (${"%.0f".format(currentAlpha * 100)}%)",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Slider(
+                        value = currentAlpha,
+                        onValueChange = { newAlpha ->
+                            currentAlpha = newAlpha
+                            // 배경 타입에 따라 업데이트
+                            when {
+                                currentBgConfig.isSolid -> {
+                                    updateSolidBackgroundId(currentHex, newAlpha)
                                 }
-                            },
-                            valueRange = 0.1f..1f
+                                currentBgConfig.isImage && currentBgConfig.imageName != null -> {
+                                    updateImageBackgroundId(currentBgConfig.imageName, newAlpha)
+                                }
+                                currentBgConfig.isGradient &&
+                                        currentBgConfig.gradientStartColor != null &&
+                                        currentBgConfig.gradientEndColor != null &&
+                                        currentBgConfig.gradientDirection != null -> {
+                                    updateGradientBackgroundId(
+                                        currentBgConfig.gradientStartColor,
+                                        currentBgConfig.gradientEndColor,
+                                        currentBgConfig.gradientDirection,
+                                        newAlpha
+                                    )
+                                }
+                            }
+                        },
+                        valueRange = 0.1f..1f
+                    )
+                }
+
+                // ⭐ 3. 탭 액션 선택 (추가)
+                Text(
+                    text = "위젯 클릭 동작",
+                    style = MaterialTheme.typography.titleMedium
+                )
+
+                var showTapActionDialog by remember { mutableStateOf(false) }
+                var selectedTapAction by remember {
+                    mutableStateOf(DataStoreManager.WidgetTapAction.OPEN_APP)
+                }
+
+                // 초기값 불러오기
+                LaunchedEffect(Unit) {
+                    selectedTapAction = dataStoreManager.getWidgetTapAction(appWidgetId)
+                }
+
+                OutlinedCard(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showTapActionDialog = true }
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = selectedTapAction.label,
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = selectedTapAction.description,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Icon(
+                            Icons.Default.TouchApp,
+                            contentDescription = "탭 액션",
+                            tint = MaterialTheme.colorScheme.primary
                         )
                     }
                 }
+
+                // 탭 액션 선택 다이얼로그
+                if (showTapActionDialog) {
+                    TapActionSelectionDialog(
+                        selectedAction = selectedTapAction,
+                        onActionSelected = { action ->
+                            selectedTapAction = action
+                            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+                                dataStoreManager.saveWidgetTapAction(appWidgetId, action)
+                            }
+                        },
+                        onDismiss = { showTapActionDialog = false }
+                    )
+                }
             }
+
+            Spacer(modifier = Modifier.height(8.dp))
 
             // 위젯 미리보기
             HorizontalDivider()
             WidgetPreview(
                 selectedStyleId = selectedStyleId,
-                currentBgConfig = currentBgConfig
+                currentBgConfig = currentBgConfig.copy(alpha = currentAlpha)  // ⭐ 최신 alpha 반영
             )
         }
     }
@@ -303,7 +446,11 @@ fun WidgetConfigScreen(
         BackgroundSelectionDialog(
             currentBgConfig = currentBgConfig,
             currentAlpha = currentAlpha,
-            onBackgroundSelected = { selectedBackgroundId = it },
+            onBackgroundSelected = { newBgId ->
+                selectedBackgroundId = newBgId
+                // ⭐ 새 배경 선택 시 alpha 동기화
+                currentAlpha = parseBackgroundId(newBgId).alpha
+            },
             onDismiss = { showBackgroundDialog = false }
         )
     }
@@ -389,9 +536,23 @@ fun WidgetPreview(
                 )
                 .clip(RoundedCornerShape(16.dp))
         ) {
-            // 이미지 배경
+            // ⭐ 이미지 배경 (투명도 적용)
             if (currentBgConfig.isImage && currentBgConfig.imageName != null) {
-                if (currentBgConfig.imageName.startsWith("file://")) {
+                if (currentBgConfig.isThemeImage) {
+                    // ⭐ "theme:" 제거하지 말고 그대로 전달!
+                    val assetPath = ThemeManager.getAssetPath(currentBgConfig.imageName)
+
+                    if (assetPath != null) {
+                        AsyncImage(
+                            model = "file:///android_asset/$assetPath",
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize(),
+                            alpha = currentBgConfig.alpha
+                        )
+                    }
+                } else if (currentBgConfig.imageName.startsWith("file://")) {
+                    // 사용자 이미지
                     val fileName = currentBgConfig.imageName.substringAfter("file://")
                     val file = ImageManager.getImageFile(context, fileName)
                     if (file != null) {
@@ -399,10 +560,12 @@ fun WidgetPreview(
                             model = file,
                             contentDescription = null,
                             contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
+                            modifier = Modifier.fillMaxSize(),
+                            alpha = currentBgConfig.alpha
                         )
                     }
                 } else {
+                    // Drawable 이미지
                     val resId = context.resources.getIdentifier(
                         currentBgConfig.imageName,
                         "drawable",
@@ -413,7 +576,8 @@ fun WidgetPreview(
                             painter = androidx.compose.ui.res.painterResource(resId),
                             contentDescription = null,
                             contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
+                            modifier = Modifier.fillMaxSize(),
+                            alpha = currentBgConfig.alpha
                         )
                     }
                 }
@@ -522,7 +686,7 @@ fun BackgroundSelectionDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .widthIn(min = 500.dp)  // ⭐ 최소 가로 크기 설정
+                    .widthIn(min = 500.dp)
             ) {
                 // 메인 탭
                 TabRow(selectedTabIndex = selectedTab) {
@@ -537,7 +701,7 @@ fun BackgroundSelectionDialog(
                         text = {
                             Text(
                                 "그라데이션",
-                                fontSize = 12.sp  // ⭐ 작은 폰트
+                                fontSize = 12.sp
                             )
                         }
                     )
@@ -559,10 +723,12 @@ fun BackgroundSelectionDialog(
                     )
                     1 -> GradientTabContent(
                         currentBgConfig = currentBgConfig,
+                        currentAlpha = currentAlpha,  // ⭐ alpha 전달
                         onGradientSelected = onBackgroundSelected
                     )
                     2 -> ImageTabContent(
                         currentBgConfig = currentBgConfig,
+                        currentAlpha = currentAlpha,  // ⭐ alpha 전달
                         onImageSelected = onBackgroundSelected
                     )
                 }
@@ -698,7 +864,7 @@ fun CustomColorPicker(
             .height(400.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // ⭐ 컬러 피커
+        // 컬러 피커
         ClassicColorPicker(
             modifier = Modifier
                 .fillMaxWidth()
@@ -711,7 +877,7 @@ fun CustomColorPicker(
             }
         )
 
-        // ⭐ 선택된 색상 미리보기
+        // 선택된 색상 미리보기
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -751,6 +917,7 @@ fun CustomColorPicker(
 @Composable
 fun GradientTabContent(
     currentBgConfig: BackgroundConfig,
+    currentAlpha: Float,  // ⭐ alpha 파라미터 추가
     onGradientSelected: (String) -> Unit
 ) {
     var startColor by remember {
@@ -762,15 +929,14 @@ fun GradientTabContent(
     var direction by remember {
         mutableStateOf(currentBgConfig.gradientDirection ?: "horizontal")
     }
-    val alpha = 1.0f
     var showStartColorPicker by remember { mutableStateOf(false) }
     var showEndColorPicker by remember { mutableStateOf(false) }
 
+    // ⭐ currentAlpha 사용 (기존 alpha 대신)
     val updateGradient: () -> Unit = {
-        onGradientSelected("gradient:$startColor,$endColor,$direction,alpha:${"%.2f".format(alpha)}")
+        onGradientSelected("gradient:$startColor,$endColor,$direction,alpha:${"%.2f".format(currentAlpha)}")
     }
 
-    // ⭐ 처음 렌더링될 때 자동으로 현재 그라디언트 적용
     LaunchedEffect(Unit) {
         updateGradient()
     }
@@ -825,7 +991,8 @@ fun GradientTabContent(
                             )
                         )
                     },
-                    shape = RoundedCornerShape(8.dp)
+                    shape = RoundedCornerShape(8.dp),
+                    alpha = currentAlpha  // ⭐ 투명도 적용
                 )
         )
 
@@ -973,7 +1140,6 @@ fun GradientColorPickerDialog(
     onDismiss: () -> Unit
 ) {
     var colorSubTab by remember { mutableStateOf(0) }
-    // ⭐ 내부에서 임시로 색상을 관리
     var tempSelectedColor by remember { mutableStateOf(currentColor) }
 
     AlertDialog(
@@ -1000,7 +1166,6 @@ fun GradientColorPickerDialog(
                     0 -> GradientPalettePicker(
                         selectedColor = tempSelectedColor,
                         onColorSelected = { color ->
-                            // ⭐ 팔레트는 즉시 적용하고 닫기
                             tempSelectedColor = color
                             onColorSelected(color)
                             onDismiss()
@@ -1009,7 +1174,6 @@ fun GradientColorPickerDialog(
                     1 -> GradientCustomPicker(
                         selectedColor = tempSelectedColor,
                         onColorSelected = { color ->
-                            // ⭐ 커스텀은 임시 저장만 (닫지 않음)
                             tempSelectedColor = color
                         }
                     )
@@ -1019,7 +1183,6 @@ fun GradientColorPickerDialog(
         confirmButton = {
             TextButton(
                 onClick = {
-                    // ⭐ 확인 버튼 누를 때만 실제 적용
                     onColorSelected(tempSelectedColor)
                     onDismiss()
                 }
@@ -1028,7 +1191,6 @@ fun GradientColorPickerDialog(
             }
         },
         dismissButton = {
-            // ⭐ 취소 버튼 추가
             TextButton(onClick = onDismiss) {
                 Text("취소")
             }
@@ -1110,7 +1272,7 @@ fun GradientCustomPicker(
             .height(400.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // ⭐ 컬러 피커
+        // 컬러 피커
         ClassicColorPicker(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1123,7 +1285,7 @@ fun GradientCustomPicker(
             }
         )
 
-        // ⭐ 선택된 색상 미리보기
+        // 선택된 색상 미리보기
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -1158,18 +1320,22 @@ fun GradientCustomPicker(
     }
 }
 
-// ==================== 이미지 탭 ====================
+// ==================== 이미지 탭 (테마별 + 내 이미지) ====================
 
 @Composable
 fun ImageTabContent(
     currentBgConfig: BackgroundConfig,
+    currentAlpha: Float,
     onImageSelected: (String) -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var userImages by remember { mutableStateOf(ImageManager.getUserImages(context)) }
 
-    // 갤러리에서 바로 선택 (크롭 없음)
+    // ⭐ 탭: 0=테마별, 1=내 이미지
+    var selectedTab by remember { mutableStateOf(0) }
+
+    // 갤러리에서 바로 선택
     val galleryLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
@@ -1178,23 +1344,274 @@ fun ImageTabContent(
                 val fileName = ImageManager.saveImageFromUri(context, it)
                 if (fileName != null) {
                     userImages = ImageManager.getUserImages(context)
-                    onImageSelected("image:file://$fileName")
-
-                    android.widget.Toast.makeText(
-                        context,
-                        "이미지가 추가되었습니다",
-                        android.widget.Toast.LENGTH_SHORT
-                    ).show()
+                    onImageSelected("image:file://$fileName,alpha:${"%.2f".format(currentAlpha)}")
+                    android.widget.Toast.makeText(context, "이미지가 추가되었습니다", android.widget.Toast.LENGTH_SHORT).show()
                 } else {
-                    android.widget.Toast.makeText(
-                        context,
-                        "이미지 추가에 실패했습니다",
-                        android.widget.Toast.LENGTH_SHORT
-                    ).show()
+                    android.widget.Toast.makeText(context, "이미지 추가에 실패했습니다", android.widget.Toast.LENGTH_SHORT).show()
                 }
             }
         }
     }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        // ⭐ 탭 선택
+        TabRow(selectedTabIndex = selectedTab) {
+            Tab(
+                selected = selectedTab == 0,
+                onClick = { selectedTab = 0 },
+                text = { Text("테마별") }
+            )
+            Tab(
+                selected = selectedTab == 1,
+                onClick = { selectedTab = 1 },
+                text = { Text("내 이미지") }
+            )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // ⭐ 탭 내용
+        when (selectedTab) {
+            0 -> ThemeImagesContent(
+                currentBgConfig = currentBgConfig,
+                currentAlpha = currentAlpha,
+                onImageSelected = onImageSelected
+            )
+            1 -> UserImagesContent(
+                currentBgConfig = currentBgConfig,
+                currentAlpha = currentAlpha,
+                userImages = userImages,
+                onImageSelected = onImageSelected,
+                onImageAdded = { galleryLauncher.launch("image/*") },
+                onImageDeleted = { fileName ->
+                    scope.launch {
+                        val deleted = ImageManager.deleteImage(context, fileName)
+                        if (deleted) {
+                            userImages = ImageManager.getUserImages(context)
+                            if (currentBgConfig.isImage && !currentBgConfig.isThemeImage &&
+                                currentBgConfig.imageName == "file://$fileName") {
+                                onImageSelected("solid:#FFFFFF,alpha:1.0")
+                            }
+                        }
+                    }
+                }
+            )
+        }
+    }
+}
+
+// ==================== 테마별 이미지 컨텐츠 (가로 스크롤) ====================
+
+@Composable
+fun ThemeImagesContent(
+    currentBgConfig: BackgroundConfig,
+    currentAlpha: Float,
+    onImageSelected: (String) -> Unit
+) {
+    val context = LocalContext.current
+    val themes = remember { com.example.dailywidget.util.ThemeManager.getAllThemes() }
+
+    var selectedTheme by remember { mutableStateOf<com.example.dailywidget.util.ThemeManager.Theme?>(null) }
+    var themeImages by remember { mutableStateOf<List<com.example.dailywidget.util.ThemeManager.ThemeImage>>(emptyList()) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(400.dp)
+    ) {
+        if (selectedTheme == null) {
+            // ⭐ 테마 선택 화면
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text("테마를 선택하세요", style = MaterialTheme.typography.titleSmall)
+
+                themes.chunked(2).forEach { row ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        row.forEach { theme ->
+                            ThemeCard(
+                                theme = theme,
+                                onClick = {
+                                    selectedTheme = theme
+                                    themeImages = com.example.dailywidget.util.ThemeManager.getThemeImages(context, theme.id)
+                                },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                        if (row.size == 1) {
+                            Spacer(modifier = Modifier.weight(1f))
+                        }
+                    }
+                }
+            }
+        } else {
+            // ⭐ 선택된 테마의 이미지 목록 (가로 스크롤)
+            Column(modifier = Modifier.fillMaxSize()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "${selectedTheme!!.displayName} (${themeImages.size})",
+                        style = MaterialTheme.typography.titleSmall
+                    )
+                    TextButton(onClick = { selectedTheme = null }) {
+                        Icon(Icons.Default.ArrowBack, null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("테마 목록")
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                if (themeImages.isEmpty()) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(
+                                Icons.Default.Image,
+                                contentDescription = null,
+                                modifier = Modifier.size(48.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "이 테마에는 아직 이미지가 없습니다",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                } else {
+                    // ⭐ 가로 스크롤 갤러리
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        themeImages.forEach { themeImage ->
+                            val imagePath = com.example.dailywidget.util.ThemeManager.buildThemeImagePath(
+                                themeImage.themeId,
+                                themeImage.fileName
+                            )
+                            val isSelected = currentBgConfig.isThemeImage &&
+                                    currentBgConfig.imageName == imagePath
+
+                            Card(
+                                modifier = Modifier
+                                    .size(150.dp)  // ⭐ 크게 표시
+                                    .clickable {
+                                        onImageSelected("image:$imagePath,alpha:${"%.2f".format(currentAlpha)}")
+                                    },
+                                shape = RoundedCornerShape(8.dp),
+                                border = if (isSelected) {
+                                    BorderStroke(3.dp, MaterialTheme.colorScheme.primary)
+                                } else {
+                                    BorderStroke(1.dp, Color.Gray)
+                                }
+                            ) {
+                                AsyncImage(
+                                    model = "file:///android_asset/${themeImage.path}",
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
+                        }
+                    }
+
+                    // ⭐ 스크롤 안내
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.SwipeLeft,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "좌우로 스크롤하여 더 많은 이미지 보기",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ThemeCard(
+    theme: com.example.dailywidget.util.ThemeManager.Theme,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier
+            .height(100.dp)
+            .clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = theme.displayName,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = theme.description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+// ==================== 내 이미지 컨텐츠 ====================
+
+@Composable
+fun UserImagesContent(
+    currentBgConfig: BackgroundConfig,
+    currentAlpha: Float,
+    userImages: List<String>,
+    onImageSelected: (String) -> Unit,
+    onImageAdded: () -> Unit,
+    onImageDeleted: (String) -> Unit
+) {
+    val context = LocalContext.current
 
     Column(
         modifier = Modifier
@@ -1203,36 +1620,6 @@ fun ImageTabContent(
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // 기본 이미지
-        Text("기본 이미지", style = MaterialTheme.typography.titleSmall)
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            listOf("image", "ic_launcher_background").forEach { name ->
-                val resId = context.resources.getIdentifier(name, "drawable", context.packageName)
-                val isSelected = currentBgConfig.isImage && currentBgConfig.imageName == name
-                Card(
-                    modifier = Modifier
-                        .size(80.dp)
-                        .clickable { onImageSelected("image:$name") },
-                    shape = RoundedCornerShape(8.dp),
-                    border = if (isSelected) {
-                        BorderStroke(3.dp, MaterialTheme.colorScheme.primary)
-                    } else {
-                        BorderStroke(1.dp, Color.Gray)
-                    }
-                ) {
-                    androidx.compose.foundation.Image(
-                        painter = androidx.compose.ui.res.painterResource(resId),
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
-            }
-        }
-
-        HorizontalDivider()
-
-        // 사용자 이미지
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -1246,12 +1633,9 @@ fun ImageTabContent(
             )
         }
 
-        // 빈 상태 메시지
         if (userImages.isEmpty()) {
             Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 16.dp),
+                modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
                 )
@@ -1274,29 +1658,26 @@ fun ImageTabContent(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "아래 버튼을 눌러 이미지를 추가해보세요",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                    )
                 }
             }
         }
 
-        // 이미지 그리드
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             userImages.chunked(3).forEach { row ->
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     row.forEach { fileName ->
                         val file = ImageManager.getImageFile(context, fileName)
-                        val isSelected = currentBgConfig.isImage && currentBgConfig.imageName == "file://$fileName"
+                        val isSelected = currentBgConfig.isImage &&
+                                !currentBgConfig.isThemeImage &&
+                                currentBgConfig.imageName == "file://$fileName"
 
                         Box(modifier = Modifier.size(80.dp)) {
                             Card(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .clickable { onImageSelected("image:file://$fileName") },
+                                    .clickable {
+                                        onImageSelected("image:file://$fileName,alpha:${"%.2f".format(currentAlpha)}")
+                                    },
                                 shape = RoundedCornerShape(8.dp),
                                 border = if (isSelected) {
                                     BorderStroke(3.dp, MaterialTheme.colorScheme.primary)
@@ -1314,7 +1695,6 @@ fun ImageTabContent(
                                 }
                             }
 
-                            // 삭제 버튼
                             var showDeleteDialog by remember { mutableStateOf(false) }
 
                             Box(
@@ -1336,29 +1716,16 @@ fun ImageTabContent(
                                 )
                             }
 
-                            // 삭제 확인 다이얼로그
                             if (showDeleteDialog) {
                                 AlertDialog(
                                     onDismissRequest = { showDeleteDialog = false },
                                     title = { Text("이미지 삭제") },
-                                    text = {
-                                        Text("이 이미지를 삭제하시겠습니까?\n위젯에서 사용 중이라면 기본 배경으로 변경됩니다.")
-                                    },
+                                    text = { Text("이 이미지를 삭제하시겠습니까?") },
                                     confirmButton = {
                                         TextButton(
                                             onClick = {
-                                                scope.launch {
-                                                    val deleted = ImageManager.deleteImage(context, fileName)
-                                                    if (deleted) {
-                                                        userImages = ImageManager.getUserImages(context)
-
-                                                        if (currentBgConfig.isImage &&
-                                                            currentBgConfig.imageName == "file://$fileName") {
-                                                            onImageSelected("solid:#FFFFFF,alpha:1.0")
-                                                        }
-                                                    }
-                                                    showDeleteDialog = false
-                                                }
+                                                onImageDeleted(fileName)
+                                                showDeleteDialog = false
                                             }
                                         ) {
                                             Text("삭제", color = MaterialTheme.colorScheme.error)
@@ -1377,7 +1744,6 @@ fun ImageTabContent(
             }
         }
 
-        // 이미지 추가 버튼
         val canAdd = ImageManager.canAddImage(context)
         val buttonText = when {
             userImages.size >= 10 -> "최대 10개 도달"
@@ -1388,7 +1754,7 @@ fun ImageTabContent(
         OutlinedButton(
             onClick = {
                 if (canAdd) {
-                    galleryLauncher.launch("image/*")
+                    onImageAdded()
                 } else {
                     val message = if (userImages.size >= 10) {
                         "최대 10개까지만 추가할 수 있습니다"
@@ -1468,4 +1834,72 @@ fun ColorSquareButton(
             )
         }
     }
+}
+
+// ==================== 탭 액션 선택 다이얼로그 ====================
+
+/**
+ * 탭 액션 선택 다이얼로그
+ */
+@Composable
+private fun TapActionSelectionDialog(
+    selectedAction: DataStoreManager.WidgetTapAction,
+    onActionSelected: (DataStoreManager.WidgetTapAction) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("위젯 클릭 동작") },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+            ) {
+                Text(
+                    text = "위젯을 탭했을 때 실행할 동작을 선택하세요",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+
+                DataStoreManager.WidgetTapAction.values().forEach { action ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                onActionSelected(action)
+                                onDismiss()
+                            }
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = selectedAction == action,
+                            onClick = {
+                                onActionSelected(action)
+                                onDismiss()
+                            }
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                text = action.label,
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                            Text(
+                                text = action.description,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("닫기")
+            }
+        }
+    )
 }

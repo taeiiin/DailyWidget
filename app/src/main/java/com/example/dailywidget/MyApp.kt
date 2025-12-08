@@ -26,7 +26,7 @@ class MyApp : Application() {
             com.example.dailywidget.util.InitialLoadHelper.loadInitialData(this@MyApp)
         }
 
-        // ⭐ 자정 위젯 업데이트 알람 설정
+        // ⭐ 앱 시작 시 자정 알람 설정
         DailyWidgetReceiver.scheduleMidnightUpdate(this)
     }
 

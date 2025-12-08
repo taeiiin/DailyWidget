@@ -7,6 +7,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <!-- ⭐ 필수 권한 -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
 
     <application
         android:name=".MyApp"
@@ -31,11 +33,11 @@
             </intent-filter>
         </activity>
 
-        <!-- ========== 위젯 Provider 등록 ========== -->
+        <!-- 기존 DailyWidgetConfigActivity 위에 추가 -->
 
-        <!-- 위젯 설정 Activity -->
+        <!-- 위젯 장르 선택 Activity -->
         <activity
-            android:name=".widget.DailyWidgetConfigActivity"
+            android:name=".widget.GenreSelectionActivity"
             android:exported="false"
             android:theme="@style/Theme.DailyWidget">
             <intent-filter>
@@ -43,52 +45,35 @@
             </intent-filter>
         </activity>
 
-        <!-- 소설 위젯 -->
-        <receiver
-            android:name=".widget.NovelWidgetProvider"
+        <!-- 위젯 설정 Activity -->
+        <activity
+            android:name=".widget.DailyWidgetConfigActivity"
             android:exported="false"
-            android:label="일일 소설">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-            </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/daily_widget_novel_info" />
-        </receiver>
+            android:theme="@style/Theme.DailyWidget" />
 
-        <!-- 판타지 위젯 -->
+        <!-- ⭐ 통합 위젯 (모든 장르) -->
         <receiver
-            android:name=".widget.FantasyWidgetProvider"
+            android:name=".widget.UnifiedWidgetProvider"
             android:exported="false"
-            android:label="일일 판타지">
+            android:label="일일 문장">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
-                android:resource="@xml/daily_widget_fantasy_info" />
-        </receiver>
-
-        <!-- 에세이 위젯 -->
-        <receiver
-            android:name=".widget.EssayWidgetProvider"
-            android:exported="false"
-            android:label="일일 에세이">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-            </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/daily_widget_essay_info" />
+                android:resource="@xml/daily_widget_info" />
         </receiver>
 
         <!-- 위젯 리시버 (수동 새로고침 등) -->
         <receiver
             android:name=".widget.DailyWidgetReceiver"
+            android:enabled="true"
             android:exported="false">
             <intent-filter>
-                <action android:name="com.example.dailywidget.MIDNIGHT_UPDATE" />
+                <action android:name="com.example.dailywidget.ACTION_MIDNIGHT_UPDATE" />
+                <action android:name="android.intent.action.DATE_CHANGED" />
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
 

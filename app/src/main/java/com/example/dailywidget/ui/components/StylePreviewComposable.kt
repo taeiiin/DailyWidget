@@ -33,7 +33,7 @@ fun StylePreview(
     ) {
         Column(
             modifier = Modifier
-                .background(androidx.compose.ui.graphics.Color(0xFFF5F5F5))
+                .background(MaterialTheme.colorScheme.surfaceVariant)  // ⭐ 수정: 다크모드 대응
                 .padding(16.dp)
                 .fillMaxWidth()
         ) {

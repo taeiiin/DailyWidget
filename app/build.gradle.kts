@@ -3,6 +3,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     id("kotlin-kapt")
+    kotlin("plugin.serialization") version "1.9.0"
 }
 
 android {
@@ -100,6 +101,8 @@ dependencies {
 
     // ⭐ 스크롤바 라이브러리
     implementation("com.github.nanihadesuka:LazyColumnScrollbar:2.2.0")
+
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")  // ⭐ 추가
 
 
 }

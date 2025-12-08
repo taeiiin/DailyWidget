@@ -10,6 +10,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -26,6 +29,12 @@ import androidx.compose.ui.graphics.Color
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import android.content.Context
+import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.AutoStories
+import androidx.compose.material.icons.filled.Article
+import androidx.compose.material.icons.filled.Label
+import androidx.compose.material.icons.filled.Lightbulb
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.text.font.FontWeight
 import com.example.dailywidget.util.InitialLoadHelper
 
@@ -161,7 +170,7 @@ fun SettingsScreen(
 
         Card(modifier = Modifier.fillMaxWidth()) {
             ListItem(
-                headlineContent = { Text("JSON 데이터 업데이트") },
+                headlineContent = { Text("초기 데이터 재부팅") },
                 supportingContent = { Text("초기 데이터만 업데이트 (추가한 문장 유지)") },
                 leadingContent = {
                     Icon(Icons.Default.Refresh, contentDescription = null)
@@ -175,7 +184,7 @@ fun SettingsScreen(
 
                             android.widget.Toast.makeText(
                                 context,
-                                "JSON 데이터가 업데이트되었습니다.",
+                                "초기 데이터가 업데이트되었습니다.",
                                 android.widget.Toast.LENGTH_SHORT
                             ).show()
                         } catch (e: Exception) {
@@ -189,6 +198,232 @@ fun SettingsScreen(
                 }
             )
         }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // ⭐ ==================== 장르 관리 섹션 (새로 추가) ====================
+        SectionHeader(title = "장르 관리")
+
+        var customGenres by remember { mutableStateOf<List<DataStoreManager.CustomGenre>>(emptyList()) }
+        var showAddGenreDialog by remember { mutableStateOf(false) }
+        var genreToDelete by remember { mutableStateOf<DataStoreManager.CustomGenre?>(null) }
+
+        // 장르 목록 불러오기
+        LaunchedEffect(Unit) {
+            customGenres = dataStoreManager.getCustomGenres()
+        }
+
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column {
+                // 기본 장르 (삭제 불가)
+                ListItem(
+                    headlineContent = { Text("소설") },
+                    supportingContent = { Text("기본 장르") },
+                    leadingContent = {
+                        Icon(Icons.Default.MenuBook, contentDescription = null)
+                    },
+                    trailingContent = {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer
+                        ) {
+                            Text(
+                                text = "기본",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+                )
+
+                Divider()
+
+                ListItem(
+                    headlineContent = { Text("판타지") },
+                    supportingContent = { Text("기본 장르") },
+                    leadingContent = {
+                        Icon(Icons.Default.AutoStories, contentDescription = null)
+                    },
+                    trailingContent = {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer
+                        ) {
+                            Text(
+                                text = "기본",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+                )
+
+                Divider()
+
+                ListItem(
+                    headlineContent = { Text("시") },
+                    supportingContent = { Text("기본 장르") },
+                    leadingContent = {
+                        Icon(Icons.Default.Article, contentDescription = null)
+                    },
+                    trailingContent = {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer
+                        ) {
+                            Text(
+                                text = "기본",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+                )
+
+                // 사용자 정의 장르
+                if (customGenres.isNotEmpty()) {
+                    Divider()
+
+                    customGenres.forEach { genre ->
+                        ListItem(
+                            headlineContent = { Text(genre.displayName) },
+                            supportingContent = {
+                                Text(
+                                    "ID: ${genre.id}",
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            },
+                            leadingContent = {
+                                Icon(Icons.Default.Label, contentDescription = null)
+                            },
+                            trailingContent = {
+                                IconButton(
+                                    onClick = { genreToDelete = genre }
+                                ) {
+                                    Icon(
+                                        Icons.Default.Delete,
+                                        contentDescription = "삭제",
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                }
+                            }
+                        )
+                        if (genre != customGenres.last()) {
+                            Divider()
+                        }
+                    }
+                }
+
+                // 장르 추가 버튼
+                Divider()
+
+                ListItem(
+                    headlineContent = { Text("장르 추가") },
+                    leadingContent = {
+                        Icon(
+                            Icons.Default.Add,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    },
+                    modifier = Modifier.clickable { showAddGenreDialog = true }
+                )
+            }
+        }
+
+        // 안내 카드
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
+            )
+        ) {
+            Row(
+                modifier = Modifier.padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Default.Info,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "추가한 장르는 위젯 설정 시 선택할 수 있으며, 문장 추가/편집 시에도 사용됩니다",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        // 장르 추가 다이얼로그
+        if (showAddGenreDialog) {
+            AddGenreDialog(
+                onConfirm = { id, displayName ->
+                    scope.launch {
+                        val success = dataStoreManager.addCustomGenre(id, displayName)
+                        if (success) {
+                            customGenres = dataStoreManager.getCustomGenres()
+                            successMessage = "장르가 추가되었습니다"
+                            showSuccess = true
+                        } else {
+                            errorMessage = "장르 추가 실패: 중복된 ID이거나 잘못된 형식입니다"
+                            showError = true
+                        }
+                    }
+                    showAddGenreDialog = false
+                },
+                onDismiss = { showAddGenreDialog = false }
+            )
+        }
+
+        // 장르 삭제 확인 다이얼로그
+        genreToDelete?.let { genre ->
+            AlertDialog(
+                onDismissRequest = { genreToDelete = null },
+                title = { Text("장르 삭제") },
+                text = {
+                    Column {
+                        Text("'${genre.displayName}' 장르를 삭제하시겠습니까?")
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            "이 장르를 사용하는 문장은 삭제되지 않습니다.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            scope.launch {
+                                val success = dataStoreManager.removeCustomGenre(genre.id)
+                                if (success) {
+                                    customGenres = dataStoreManager.getCustomGenres()
+                                    successMessage = "장르가 삭제되었습니다"
+                                    showSuccess = true
+                                }
+                                genreToDelete = null
+                            }
+                        }
+                    ) {
+                        Text("삭제", color = MaterialTheme.colorScheme.error)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { genreToDelete = null }) {
+                        Text("취소")
+                    }
+                }
+            )
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
 
         // ==================== 표시 설정 섹션 ====================
         SectionHeader(title = "표시 설정")
@@ -368,7 +603,11 @@ fun SettingsScreen(
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
-                        containerColor = Color.White
+                        containerColor = if (isSystemInDarkTheme()) {
+                            MaterialTheme.colorScheme.surfaceVariant
+                        } else {
+                            Color.White  // ⭐ 라이트모드: 흰색
+                        }
                     )
                 ) {
                     Column(
@@ -378,17 +617,20 @@ fun SettingsScreen(
                     ) {
                         Text(
                             text = "예시 문장입니다",
-                            fontSize = fontSizeConfig.textSize.sp
+                            fontSize = fontSizeConfig.textSize.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant  // ⭐ 텍스트 색상도 추가
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = "- 출처, 작가",
-                            fontSize = fontSizeConfig.sourceSize.sp
+                            fontSize = fontSizeConfig.sourceSize.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant  // ⭐ 텍스트 색상도 추가
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = "특이사항",
-                            fontSize = fontSizeConfig.extraSize.sp
+                            fontSize = fontSizeConfig.extraSize.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant  // ⭐ 텍스트 색상도 추가
                         )
                     }
                 }
@@ -404,7 +646,19 @@ fun SettingsScreen(
                             DailyWidgetProvider.updateAllWidgets(context)
                         }
                     },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isSystemInDarkTheme()) {
+                            MaterialTheme.colorScheme.surfaceVariant
+                        } else {
+                            Color.White  // ⭐ 라이트모드: 흰색 배경
+                        },
+                        contentColor = if (isSystemInDarkTheme()) {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        } else {
+                            MaterialTheme.colorScheme.primary  // ⭐ 라이트모드: 파란색 텍스트
+                        }
+                    ), // ⭐ 테두리 추가
                 ) {
                     Text("기본값으로 초기화")
                 }
@@ -450,7 +704,7 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.height(8.dp))
                     Text("• 소설: ${backupInfo!!.novelCount}개")
                     Text("• 판타지: ${backupInfo!!.fantasyCount}개")
-                    Text("• 에세이: ${backupInfo!!.essayCount}개")
+                    Text("• 시: ${backupInfo!!.poemCount}개")
                     Spacer(modifier = Modifier.height(8.dp))
                     Text("날짜 범위: ${backupInfo!!.dateRange}")
                 }
@@ -702,5 +956,143 @@ private fun SectionHeader(
         fontWeight = FontWeight.SemiBold,
         color = MaterialTheme.colorScheme.onSurface,
         modifier = modifier.padding(vertical = 12.dp)
+    )
+}
+
+// ⭐ ==================== 장르 추가 다이얼로그 ====================
+
+/**
+ * 장르 추가 다이얼로그
+ */
+@Composable
+private fun AddGenreDialog(
+    onConfirm: (id: String, displayName: String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var genreId by remember { mutableStateOf("") }
+    var genreDisplayName by remember { mutableStateOf("") }
+    var idError by remember { mutableStateOf<String?>(null) }
+    var nameError by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("장르 추가") },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    text = "새로운 장르를 추가합니다",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+
+                // 장르 ID 입력
+                OutlinedTextField(
+                    value = genreId,
+                    onValueChange = { value ->
+                        genreId = value.lowercase()
+                        idError = when {
+                            value.isBlank() -> "ID를 입력하세요"
+                            !value.matches(Regex("^[a-z0-9_]*$")) -> "소문자, 숫자, 언더스코어(_)만 가능"
+                            value in listOf("novel", "fantasy", "poem") -> "기본 장르 ID는 사용할 수 없습니다"
+                            else -> null
+                        }
+                    },
+                    label = { Text("장르 ID") },
+                    placeholder = { Text("예: poem, movie_quote") },
+                    isError = idError != null,
+                    supportingText = {
+                        Text(
+                            text = idError ?: "영문 소문자, 숫자, 언더스코어만 사용 가능",
+                            color = if (idError != null)
+                                MaterialTheme.colorScheme.error
+                            else
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                // 장르 표시명 입력
+                OutlinedTextField(
+                    value = genreDisplayName,
+                    onValueChange = { value ->
+                        genreDisplayName = value
+                        nameError = if (value.isBlank()) "표시명을 입력하세요" else null
+                    },
+                    label = { Text("장르 표시명") },
+                    placeholder = { Text("예: 시, 영화 대사") },
+                    isError = nameError != null,
+                    supportingText = {
+                        if (nameError != null) {
+                            Text(
+                                text = nameError!!,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                // 안내 카드
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Icon(
+                            Icons.Default.Lightbulb,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                text = "장르 추가 팁",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "• ID는 영문 소문자로 시작하세요\n• 표시명은 한글로 입력 가능합니다\n• 예: poem → 시, quote → 명언",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    if (genreId.isNotBlank() &&
+                        genreDisplayName.isNotBlank() &&
+                        idError == null &&
+                        nameError == null) {
+                        onConfirm(genreId, genreDisplayName)
+                    }
+                },
+                enabled = genreId.isNotBlank() &&
+                        genreDisplayName.isNotBlank() &&
+                        idError == null &&
+                        nameError == null
+            ) {
+                Text("추가")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("취소")
+            }
+        }
     )
 }

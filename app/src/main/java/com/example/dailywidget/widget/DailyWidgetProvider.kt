@@ -10,6 +10,7 @@ import android.graphics.Color
 import android.os.Bundle
 import android.util.TypedValue
 import android.view.View
+import com.example.dailywidget.util.ThemeManager
 import android.widget.RemoteViews
 import com.example.dailywidget.R
 import com.example.dailywidget.data.db.AppDatabase
@@ -23,58 +24,11 @@ import kotlinx.coroutines.launch
 import android.graphics.BitmapFactory
 import com.example.dailywidget.util.ImageManager
 import java.text.SimpleDateFormat
+import com.example.dailywidget.widget.BackgroundConfig
+import com.example.dailywidget.widget.parseBackgroundId
 import java.util.*
 import kotlin.math.roundToInt
 
-// ==================== 배경 설정 데이터 및 파싱 도우미 함수 ====================
-
-data class BackgroundConfig(
-    val type: String,
-    val hexColor: String = "#000000",
-    val alpha: Float = 1.0f,
-    val imageName: String? = null,
-    val gradientStartColor: String? = null,
-    val gradientEndColor: String? = null,
-    val gradientDirection: String? = null
-) {
-    val isSolid: Boolean get() = type == "solid"
-    val isImage: Boolean get() = type == "image"
-    val isGradient: Boolean get() = type == "gradient"
-}
-
-fun parseBackgroundId(id: String): BackgroundConfig {
-    return when {
-        id.startsWith("solid:") -> {
-            val parts = id.substringAfter("solid:").split(",")
-            val hex = parts.firstOrNull()?.takeIf { it.isNotEmpty() } ?: "#000000"
-            val alphaStr = parts.lastOrNull()?.substringAfter("alpha:") ?: "1.0"
-            val alpha = alphaStr.toFloatOrNull() ?: 1.0f
-            BackgroundConfig("solid", hexColor = hex, alpha = alpha)
-        }
-        id.startsWith("image:") -> {
-            BackgroundConfig("image", imageName = id.substringAfter("image:"))
-        }
-        id.startsWith("gradient:") -> {
-            // gradient:색1,색2,방향,alpha:0.5
-            val parts = id.substringAfter("gradient:").split(",")
-            val startColor = parts.getOrNull(0) ?: "#FFFFFF"
-            val endColor = parts.getOrNull(1) ?: "#000000"
-            val direction = parts.getOrNull(2) ?: "horizontal"
-            val alphaStr = parts.getOrNull(3)?.substringAfter("alpha:") ?: "1.0"
-            val alpha = alphaStr.toFloatOrNull() ?: 1.0f
-            BackgroundConfig(
-                type = "gradient",
-                gradientStartColor = startColor,
-                gradientEndColor = endColor,
-                gradientDirection = direction,
-                alpha = alpha
-            )
-        }
-        else -> {
-            BackgroundConfig("solid", hexColor = "#FFFFFF", alpha = 1.0f)
-        }
-    }
-}
 
 // ==================== DailyWidgetProvider 클래스 ====================
 
@@ -87,34 +41,69 @@ abstract class DailyWidgetProvider : AppWidgetProvider() {
         fun updateAllWidgets(context: Context) {
             val appWidgetManager = AppWidgetManager.getInstance(context)
 
-            val novelIds = appWidgetManager.getAppWidgetIds(ComponentName(context, NovelWidgetProvider::class.java))
-            val fantasyIds = appWidgetManager.getAppWidgetIds(ComponentName(context, FantasyWidgetProvider::class.java))
-            val essayIds = appWidgetManager.getAppWidgetIds(ComponentName(context, EssayWidgetProvider::class.java))
+            // ⭐ UnifiedWidgetProvider만 업데이트
+            val unifiedIds = appWidgetManager.getAppWidgetIds(
+                ComponentName(context, UnifiedWidgetProvider::class.java)
+            )
 
-            novelIds.forEach { NovelWidgetProvider().updateAppWidget(context, appWidgetManager, it, "novel") }
-            fantasyIds.forEach { FantasyWidgetProvider().updateAppWidget(context, appWidgetManager, it, "fantasy") }
-            essayIds.forEach { EssayWidgetProvider().updateAppWidget(context, appWidgetManager, it, "essay") }
+            val provider = UnifiedWidgetProvider()
+            unifiedIds.forEach { appWidgetId ->
+                // ⭐ 각 위젯의 장르를 DataStore에서 조회하여 업데이트
+                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                    try {
+                        val dataStoreManager = com.example.dailywidget.data.repository.DataStoreManager(context)
+                        val genreId = dataStoreManager.getWidgetGenre(appWidgetId)
+
+                        provider.updateAppWidget(
+                            context = context,
+                            appWidgetManager = appWidgetManager,
+                            appWidgetId = appWidgetId,
+                            genre = genreId,
+                            forceRefresh = false
+                        )
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+            }
         }
 
         fun updateWidgets(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray, genre: String) {
-            val provider = when (genre) {
-                "novel" -> NovelWidgetProvider()
-                "fantasy" -> FantasyWidgetProvider()
-                "essay" -> EssayWidgetProvider()
-                else -> NovelWidgetProvider()
-            }
+            // ⭐ UnifiedWidgetProvider 사용
+            val provider = UnifiedWidgetProvider()
             appWidgetIds.forEach { appWidgetId ->
                 provider.updateAppWidget(context, appWidgetManager, appWidgetId, genre, forceRefresh = false)
             }
         }
     }
 
-    abstract fun getGenre(): String
-
+    open fun getGenre(): String {
+        // 기본값 반환 (하위 호환성)
+        // UnifiedWidgetProvider는 이 함수를 사용하지 않음
+        return "novel"
+    }
     override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
+        // ⭐ 이 부모 클래스의 onUpdate가 호출되면 안됨!
+        android.util.Log.d("DailyWidgetProvider", "⚠️ BASE onUpdate called! This should not happen!")
+        DailyWidgetReceiver.scheduleMidnightUpdate(context)
+
         appWidgetIds.forEach { appWidgetId ->
             updateAppWidget(context, appWidgetManager, appWidgetId, getGenre(), forceRefresh = false)
         }
+    }
+
+    // ⭐ 추가: 첫 위젯 추가 시 호출
+    override fun onEnabled(context: Context) {
+        super.onEnabled(context)
+        // 자정 알람 설정
+        DailyWidgetReceiver.scheduleMidnightUpdate(context)
+    }
+
+    // ⭐ 추가: 마지막 위젯 삭제 시 호출
+    override fun onDisabled(context: Context) {
+        super.onDisabled(context)
+        // 자정 알람 취소
+        DailyWidgetReceiver.cancelMidnightUpdate(context)
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -191,7 +180,16 @@ abstract class DailyWidgetProvider : AppWidgetProvider() {
                     views.setViewVisibility(R.id.widget_extra, View.GONE)
                     views.setViewVisibility(R.id.widget_refresh_button, View.GONE)
 
-                    setupPendingIntents(context, views, appWidgetId, genre, filteredSentences.size)
+                    // ⭐ 문장 없을 때는 기본 액션만 (앱 열기)
+                    val intent = Intent(context, com.example.dailywidget.ui.activity.MainActivity::class.java)
+                    val pendingIntent = PendingIntent.getActivity(
+                        context,
+                        appWidgetId,
+                        intent,
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                    )
+                    views.setOnClickPendingIntent(R.id.widget_container, pendingIntent)
+
                     appWidgetManager.updateAppWidget(appWidgetId, views)
                     return@launch
                 }
@@ -230,7 +228,15 @@ abstract class DailyWidgetProvider : AppWidgetProvider() {
                     if (!isOnlyOneRow && filteredSentences.size > 1) View.VISIBLE else View.GONE
                 )
 
-                setupPendingIntents(context, views, appWidgetId, genre, filteredSentences.size)
+                setupPendingIntents(
+                    context = context,
+                    views = views,
+                    appWidgetId = appWidgetId,
+                    genre = genre,
+                    sentenceCount = filteredSentences.size,
+                    sentence = sentence,  // ⭐ 추가
+                    displayConfig = displayConfig  // ⭐ 추가
+                )
                 appWidgetManager.updateAppWidget(appWidgetId, views)
 
             } catch (e: Exception) {
@@ -241,9 +247,6 @@ abstract class DailyWidgetProvider : AppWidgetProvider() {
 
 // ==================== Helper 함수들 ====================
 
-    /**
-     * 배경 적용
-     */
     private fun applyBackground(views: RemoteViews, bgConfig: BackgroundConfig, context: Context) {
         when {
             bgConfig.isSolid -> {
@@ -258,45 +261,186 @@ abstract class DailyWidgetProvider : AppWidgetProvider() {
                     views.setInt(R.id.widget_background_solid, "setColorFilter", opaqueColor)
                     views.setInt(R.id.widget_background_solid, "setImageAlpha", alphaInt)
                 } catch (e: IllegalArgumentException) {
+                    android.util.Log.e("WidgetBg", "Invalid color: ${bgConfig.hexColor}", e)
                     setDefaultBackground(views)
                 }
             }
             bgConfig.isImage && bgConfig.imageName != null -> {
-                // 이미지 배경
+                // ⭐ 이미지 배경
                 views.setViewVisibility(R.id.widget_background_solid, View.GONE)
                 views.setViewVisibility(R.id.widget_background_image, View.VISIBLE)
 
-                if (bgConfig.imageName.startsWith("file://")) {
-                    // 사용자 이미지
-                    val fileName = bgConfig.imageName.substringAfter("file://")
-                    val imageFile = ImageManager.getImageFile(context, fileName)
+                try {
+                    if (bgConfig.isThemeImage) {
+                        // ⭐ 테마 이미지
+                        android.util.Log.d("WidgetBg", "Theme image: ${bgConfig.imageName}")
 
-                    if (imageFile != null && imageFile.exists()) {
-                        try {
-                            val bitmap = BitmapFactory.decodeFile(imageFile.absolutePath)
-                            if (bitmap != null) {
-                                views.setImageViewBitmap(R.id.widget_background_image, bitmap)
-                            } else {
+                        val assetPath = ThemeManager.getAssetPath(bgConfig.imageName)
+                        android.util.Log.d("WidgetBg", "Asset path: $assetPath")
+
+                        if (assetPath != null) {
+                            try {
+                                val inputStream = context.assets.open(assetPath)
+
+                                // ⭐ 1. 원본 비트맵 디코드
+                                val originalBitmap = BitmapFactory.decodeStream(inputStream)
+                                inputStream.close()
+
+                                if (originalBitmap != null) {
+                                    // ⭐ 2. 위젯 크기에 맞게 리사이징 (최대 800px)
+                                    val maxSize = 800
+                                    val ratio = minOf(
+                                        maxSize.toFloat() / originalBitmap.width,
+                                        maxSize.toFloat() / originalBitmap.height
+                                    )
+
+                                    val newWidth = (originalBitmap.width * ratio).toInt()
+                                    val newHeight = (originalBitmap.height * ratio).toInt()
+
+                                    val resizedBitmap = android.graphics.Bitmap.createScaledBitmap(
+                                        originalBitmap,
+                                        newWidth,
+                                        newHeight,
+                                        true
+                                    )
+
+                                    // ⭐ 3. 원본 비트맵 해제
+                                    if (resizedBitmap != originalBitmap) {
+                                        originalBitmap.recycle()
+                                    }
+
+                                    android.util.Log.d("WidgetBg", "Image resized: ${originalBitmap.width}x${originalBitmap.height} -> ${newWidth}x${newHeight}")
+
+                                    // ⭐ 4. 위젯에 적용
+                                    val alphaInt = (bgConfig.alpha * 255).toInt().coerceIn(0, 255)
+                                    views.setImageViewBitmap(R.id.widget_background_image, resizedBitmap)
+                                    views.setInt(R.id.widget_background_image, "setImageAlpha", alphaInt)
+
+                                    android.util.Log.d("WidgetBg", "Theme image applied successfully")
+                                } else {
+                                    android.util.Log.e("WidgetBg", "Bitmap decode failed")
+                                    setDefaultBackground(views)
+                                }
+                            } catch (e: Exception) {
+                                android.util.Log.e("WidgetBg", "Error: ${e.message}", e)
                                 setDefaultBackground(views)
                             }
-                        } catch (e: Exception) {
+                        } else {
+                            android.util.Log.e("WidgetBg", "Asset path is null")
+                            setDefaultBackground(views)
+                        }
+                    } else if (bgConfig.imageName.startsWith("file://")) {
+                        // 사용자 이미지
+                        android.util.Log.d("WidgetBg", "User image: ${bgConfig.imageName}")
+                        val fileName = bgConfig.imageName.substringAfter("file://")
+                        val imageFile = ImageManager.getImageFile(context, fileName)
+
+                        if (imageFile != null && imageFile.exists()) {
+                            try {
+                                // ⭐ 1. 원본 디코드
+                                val originalBitmap = BitmapFactory.decodeFile(imageFile.absolutePath)
+
+                                if (originalBitmap != null) {
+                                    // ⭐ 2. 리사이징
+                                    val maxSize = 800
+                                    val ratio = minOf(
+                                        maxSize.toFloat() / originalBitmap.width,
+                                        maxSize.toFloat() / originalBitmap.height
+                                    )
+
+                                    val newWidth = (originalBitmap.width * ratio).toInt()
+                                    val newHeight = (originalBitmap.height * ratio).toInt()
+
+                                    val resizedBitmap = android.graphics.Bitmap.createScaledBitmap(
+                                        originalBitmap,
+                                        newWidth,
+                                        newHeight,
+                                        true
+                                    )
+
+                                    if (resizedBitmap != originalBitmap) {
+                                        originalBitmap.recycle()
+                                    }
+
+                                    android.util.Log.d("WidgetBg", "User image resized: ${newWidth}x${newHeight}")
+
+                                    // ⭐ 3. 적용
+                                    val alphaInt = (bgConfig.alpha * 255).toInt().coerceIn(0, 255)
+                                    views.setImageViewBitmap(R.id.widget_background_image, resizedBitmap)
+                                    views.setInt(R.id.widget_background_image, "setImageAlpha", alphaInt)
+
+                                    android.util.Log.d("WidgetBg", "User image applied successfully")
+                                } else {
+                                    android.util.Log.e("WidgetBg", "User bitmap decode failed")
+                                    setDefaultBackground(views)
+                                }
+                            } catch (e: Exception) {
+                                android.util.Log.e("WidgetBg", "Error: ${e.message}", e)
+                                setDefaultBackground(views)
+                            }
+                        } else {
+                            android.util.Log.e("WidgetBg", "User image file not found: $fileName")
                             setDefaultBackground(views)
                         }
                     } else {
-                        setDefaultBackground(views)
+                        // Drawable 이미지
+                        android.util.Log.d("WidgetBg", "Drawable image: ${bgConfig.imageName}")
+                        val resId = context.resources.getIdentifier(
+                            bgConfig.imageName,
+                            "drawable",
+                            context.packageName
+                        )
+                        if (resId != 0) {
+                            try {
+                                // ⭐ 리사이징
+                                val originalBitmap = BitmapFactory.decodeResource(context.resources, resId)
+
+                                if (originalBitmap != null) {
+                                    val maxSize = 800
+                                    val ratio = minOf(
+                                        maxSize.toFloat() / originalBitmap.width,
+                                        maxSize.toFloat() / originalBitmap.height
+                                    )
+
+                                    val newWidth = (originalBitmap.width * ratio).toInt()
+                                    val newHeight = (originalBitmap.height * ratio).toInt()
+
+                                    val resizedBitmap = android.graphics.Bitmap.createScaledBitmap(
+                                        originalBitmap,
+                                        newWidth,
+                                        newHeight,
+                                        true
+                                    )
+
+                                    if (resizedBitmap != originalBitmap) {
+                                        originalBitmap.recycle()
+                                    }
+
+                                    val alphaInt = (bgConfig.alpha * 255).toInt().coerceIn(0, 255)
+                                    views.setImageViewBitmap(R.id.widget_background_image, resizedBitmap)
+                                    views.setInt(R.id.widget_background_image, "setImageAlpha", alphaInt)
+
+                                    android.util.Log.d("WidgetBg", "Drawable applied successfully")
+                                } else {
+                                    setDefaultBackground(views)
+                                }
+                            } catch (e: Exception) {
+                                android.util.Log.e("WidgetBg", "Error: ${e.message}", e)
+                                setDefaultBackground(views)
+                            }
+                        } else {
+                            android.util.Log.e("WidgetBg", "Drawable resource not found: ${bgConfig.imageName}")
+                            setDefaultBackground(views)
+                        }
                     }
-                } else {
-                    // 기본 이미지
-                    val resId = context.resources.getIdentifier(bgConfig.imageName, "drawable", context.packageName)
-                    if (resId != 0) {
-                        views.setImageViewResource(R.id.widget_background_image, resId)
-                    } else {
-                        setDefaultBackground(views)
-                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("WidgetBg", "Error applying image: ${e.message}", e)
+                    e.printStackTrace()
+                    setDefaultBackground(views)
                 }
             }
             bgConfig.isGradient && bgConfig.gradientStartColor != null && bgConfig.gradientEndColor != null -> {
-                // 그라디언트 배경
+                // ⭐ 그라디언트 배경
                 try {
                     val startColor = Color.parseColor(bgConfig.gradientStartColor)
                     val endColor = Color.parseColor(bgConfig.gradientEndColor)
@@ -317,7 +461,11 @@ abstract class DailyWidgetProvider : AppWidgetProvider() {
 
                     val width = 1080
                     val height = 1920
-                    val bitmap = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888)
+                    val bitmap = android.graphics.Bitmap.createBitmap(
+                        width,
+                        height,
+                        android.graphics.Bitmap.Config.ARGB_8888
+                    )
                     val canvas = android.graphics.Canvas(bitmap)
                     gradientDrawable.setBounds(0, 0, width, height)
                     gradientDrawable.alpha = alphaInt
@@ -327,16 +475,19 @@ abstract class DailyWidgetProvider : AppWidgetProvider() {
                     views.setViewVisibility(R.id.widget_background_image, View.VISIBLE)
                     views.setImageViewBitmap(R.id.widget_background_image, bitmap)
 
+                    android.util.Log.d("WidgetBg", "Gradient applied: $startColor -> $endColor, alpha=$alphaInt")
+
                 } catch (e: Exception) {
+                    android.util.Log.e("WidgetBg", "Gradient error: ${e.message}", e)
                     setDefaultBackground(views)
                 }
             }
             else -> {
+                android.util.Log.d("WidgetBg", "Using default background")
                 setDefaultBackground(views)
             }
         }
     }
-
     /**
      * 텍스트 컨텐츠 적용
      */
@@ -401,19 +552,97 @@ abstract class DailyWidgetProvider : AppWidgetProvider() {
         views: RemoteViews,
         appWidgetId: Int,
         genre: String,
-        sentenceCount: Int
+        sentenceCount: Int,
+        sentence: DailySentenceEntity,  // ⭐ 추가
+        displayConfig: DataStoreManager.DisplayConfig  // ⭐ 추가
     ) {
-        // 위젯 클릭 → 앱 열기
-        val intent = Intent(context, MainActivity::class.java)
-        val pendingIntent = PendingIntent.getActivity(
-            context,
-            appWidgetId,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        views.setOnClickPendingIntent(R.id.widget_container, pendingIntent)
+        // ⭐ 탭 액션 불러오기
+        val dataStoreManager = DataStoreManager(context)
+        val tapAction = kotlinx.coroutines.runBlocking {
+            dataStoreManager.getWidgetTapAction(appWidgetId)
+        }
 
-        // 새로고침 버튼
+        // ⭐ 탭 액션에 따라 PendingIntent 생성
+        val tapPendingIntent = when (tapAction) {
+            DataStoreManager.WidgetTapAction.OPEN_APP -> {
+                // 앱 열기 (기본)
+                val intent = Intent(context, com.example.dailywidget.ui.activity.MainActivity::class.java)
+                PendingIntent.getActivity(
+                    context,
+                    appWidgetId,
+                    intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+            }
+
+            DataStoreManager.WidgetTapAction.SHOW_NEXT -> {
+                // 다음 문장 (새로고침)
+                val intent = Intent(context, getProviderClass(genre)).apply {
+                    action = ACTION_REFRESH
+                    putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
+                    putExtra(EXTRA_GENRE, genre)
+                }
+                PendingIntent.getBroadcast(
+                    context,
+                    appWidgetId,
+                    intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+            }
+
+            DataStoreManager.WidgetTapAction.SHARE -> {
+                // 공유하기
+                val shareText = buildShareText(sentence, displayConfig)
+                val intent = Intent.createChooser(
+                    Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_TEXT, shareText)
+                    },
+                    null
+                ).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                PendingIntent.getActivity(
+                    context,
+                    appWidgetId,
+                    intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+            }
+
+            DataStoreManager.WidgetTapAction.OPEN_CONFIG -> {
+                // 위젯 설정 화면으로
+                val intent = Intent(context, DailyWidgetConfigActivity::class.java).apply {
+                    putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                PendingIntent.getActivity(
+                    context,
+                    appWidgetId,
+                    intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+            }
+
+            DataStoreManager.WidgetTapAction.OPEN_LIST -> {
+                // 목록 화면으로
+                val intent = Intent(context, com.example.dailywidget.ui.activity.MainActivity::class.java).apply {
+                    putExtra("navigate_to", "list")
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                }
+                PendingIntent.getActivity(
+                    context,
+                    appWidgetId,
+                    intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+            }
+        }
+
+        // ⭐ 위젯 컨테이너에 탭 액션 적용
+        views.setOnClickPendingIntent(R.id.widget_container, tapPendingIntent)
+
+        // 새로고침 버튼 (기존 유지)
         if (sentenceCount > 1) {
             val refreshIntent = Intent(context, getProviderClass(genre)).apply {
                 action = ACTION_REFRESH
@@ -427,6 +656,34 @@ abstract class DailyWidgetProvider : AppWidgetProvider() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
             views.setOnClickPendingIntent(R.id.widget_refresh_button, refreshPendingIntent)
+        }
+    }
+
+    /**
+     * ⭐ 공유용 텍스트 생성
+     */
+    private fun buildShareText(
+        sentence: DailySentenceEntity,
+        displayConfig: DataStoreManager.DisplayConfig
+    ): String {
+        return buildString {
+            append(sentence.text)
+
+            val sourceWriter = buildSourceWriterText(
+                sentence.source,
+                sentence.writer,
+                displayConfig.showSource,
+                displayConfig.showWriter
+            )
+            if (sourceWriter.isNotEmpty()) {
+                append("\n\n")
+                append(sourceWriter)
+            }
+
+            if (!sentence.extra.isNullOrEmpty() && displayConfig.showExtra) {
+                append("\n")
+                append(sentence.extra)
+            }
         }
     }
 
@@ -474,8 +731,8 @@ abstract class DailyWidgetProvider : AppWidgetProvider() {
 
         return adjustedSize.coerceIn(minSize, maxSize)
     }
-    private fun getProviderClass(genre: String) = when(genre) {"novel"->NovelWidgetProvider::class.java;"fantasy"->FantasyWidgetProvider::class.java;"essay"->EssayWidgetProvider::class.java;else->NovelWidgetProvider::class.java}
 
+    private fun getProviderClass(genre: String) = UnifiedWidgetProvider::class.java
     /**
      * 기본 배경 설정 (흰색)
      */
@@ -486,7 +743,3 @@ abstract class DailyWidgetProvider : AppWidgetProvider() {
         views.setInt(R.id.widget_background_solid, "setImageAlpha", 255)
     }
 }
-
-class NovelWidgetProvider : DailyWidgetProvider() { override fun getGenre() = "novel" }
-class FantasyWidgetProvider : DailyWidgetProvider() { override fun getGenre() = "fantasy" }
-class EssayWidgetProvider : DailyWidgetProvider() { override fun getGenre() = "essay" }

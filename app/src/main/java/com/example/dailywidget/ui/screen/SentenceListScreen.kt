@@ -38,6 +38,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.saveable.rememberSaveable  // ⭐ 추가
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.draw.drawWithContent
@@ -58,6 +59,7 @@ import androidx.compose.foundation.background
  * - 정렬 (최신순/오래된순)
  * - 문장 추가/편집/삭제
  * - 터치 가능한 스크롤바
+ * - ⭐ 스크롤 위치 유지 (편집 화면에서 돌아와도 기존 위치 유지)
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -116,9 +118,14 @@ fun SentenceListScreen(
                 }
 
                 // 정렬 적용
-                sentences = when (sortOrder) {
+                val newSentences = when (sortOrder) {
                     SortOrder.ASCENDING -> filtered.sortedBy { it.date }
                     SortOrder.DESCENDING -> filtered.sortedByDescending { it.date }
+                }
+
+                // ⭐ 내용이 실제로 변경되었을 때만 업데이트
+                if (sentences != newSentences) {
+                    sentences = newSentences
                 }
 
                 isLoading = false
@@ -133,22 +140,8 @@ fun SentenceListScreen(
         loadSentences()
     }
 
-    // 편집 화면
-    if (showEditor) {
-        SentenceEditorScreen(
-            repository = repository,
-            sentence = editingSentence,
-            onDismiss = {
-                showEditor = false
-                editingSentence = null
-                loadSentences()
-            }
-        )
-        return
-    }
-
-    // 목록 화면
-    Scaffold(
+        // 목록 화면 (항상 렌더링)
+        Scaffold(
         modifier = modifier,
         floatingActionButton = {
             FloatingActionButton(
@@ -164,305 +157,320 @@ fun SentenceListScreen(
         }
     ) { innerPadding ->
 
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-        ) {
-
-            // 검색 UI
             Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
+                    .fillMaxSize()
+                    .padding(innerPadding)
             ) {
-                // 검색 입력 필드
-                TextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
+
+                // 검색 UI
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(52.dp),
-                    placeholder = {
-                        Text(
-                            getSearchPlaceholder(searchType),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                            fontSize = 15.sp
-                        )
-                    },
-                    textStyle = TextStyle(fontSize = 15.sp),
-                    leadingIcon = {
-                        Icon(
-                            Icons.Default.Search,
-                            contentDescription = "검색",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                        )
-                    },
-                    trailingIcon = {
-                        if (searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { searchQuery = "" }) {
-                                Icon(
-                                    Icons.Default.Close,
-                                    contentDescription = "지우기",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(
-                        onSearch = {
-                            keyboardController?.hide()
-                            loadSentences()
-                        }
-                    ),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = TextFieldDefaults.colors(
-                        focusedContainerColor = Gray100,
-                        unfocusedContainerColor = Gray100,
-                        disabledContainerColor = Gray100,
-                        focusedIndicatorColor = Color.Transparent,
-                        unfocusedIndicatorColor = Color.Transparent,
-                        disabledIndicatorColor = Color.Transparent,
-                    )
-                )
-
-                // 검색 옵션 확장
-                AnimatedVisibility(visible = isSearchExpanded) {
-                    Column(modifier = Modifier.padding(top = 12.dp)) {
-                        Text(
-                            text = "검색 옵션",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            SearchType.values().forEach { type ->
-                                FilterChip(
-                                    selected = searchType == type,
-                                    onClick = { searchType = type },
-                                    label = { Text(type.label) },
-                                    shape = RoundedCornerShape(8.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // 검색 옵션 펼치기/정렬 버튼
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(horizontal = 16.dp)
                 ) {
-                    // 검색 옵션 펼치기
-                    TextButton(
-                        onClick = { isSearchExpanded = !isSearchExpanded },
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Icon(
-                            if (isSearchExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
+                    // 검색 입력 필드
+                    TextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp),
+                        placeholder = {
+                            Text(
+                                getSearchPlaceholder(searchType),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                fontSize = 15.sp
+                            )
+                        },
+                        textStyle = TextStyle(fontSize = 15.sp),
+                        leadingIcon = {
+                            Icon(
+                                Icons.Default.Search,
+                                contentDescription = "검색",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                            )
+                        },
+                        trailingIcon = {
+                            if (searchQuery.isNotEmpty()) {
+                                IconButton(onClick = { searchQuery = "" }) {
+                                    Icon(
+                                        Icons.Default.Close,
+                                        contentDescription = "지우기",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                        keyboardActions = KeyboardActions(
+                            onSearch = {
+                                keyboardController?.hide()
+                                loadSentences()
+                            }
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = Gray100,
+                            unfocusedContainerColor = Gray100,
+                            disabledContainerColor = Gray100,
+                            focusedIndicatorColor = Color.Transparent,
+                            unfocusedIndicatorColor = Color.Transparent,
+                            disabledIndicatorColor = Color.Transparent,
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(if (isSearchExpanded) "접기" else "검색 옵션")
+                    )
+
+                    // 검색 옵션 확장
+                    AnimatedVisibility(visible = isSearchExpanded) {
+                        Column(modifier = Modifier.padding(top = 12.dp)) {
+                            Text(
+                                text = "검색 옵션",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                SearchType.values().forEach { type ->
+                                    FilterChip(
+                                        selected = searchType == type,
+                                        onClick = { searchType = type },
+                                        label = { Text(type.label) },
+                                        shape = RoundedCornerShape(8.dp)
+                                    )
+                                }
+                            }
+                        }
                     }
 
-                    // 정렬 버튼
-                    Box {
-                        OutlinedButton(
-                            onClick = { showSortDropdown = !showSortDropdown },
+                    // 검색 옵션 펼치기/정렬 버튼
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // 검색 옵션 펼치기
+                        TextButton(
+                            onClick = { isSearchExpanded = !isSearchExpanded },
                             shape = RoundedCornerShape(8.dp)
                         ) {
                             Icon(
-                                Icons.Default.Sort,
+                                if (isSearchExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
                                 contentDescription = null,
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text(sortOrder.label)
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Icon(
-                                if (showSortDropdown) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
+                            Text(if (isSearchExpanded) "접기" else "검색 옵션")
                         }
 
-                        DropdownMenu(
-                            expanded = showSortDropdown,
-                            onDismissRequest = { showSortDropdown = false }
-                        ) {
-                            SortOrder.values().forEach { order ->
-                                DropdownMenuItem(
-                                    text = {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            RadioButton(
-                                                selected = sortOrder == order,
-                                                onClick = null
-                                            )
-                                            Text(order.label)
+                        // 정렬 버튼
+                        Box {
+                            OutlinedButton(
+                                onClick = { showSortDropdown = !showSortDropdown },
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Sort,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(sortOrder.label)
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Icon(
+                                    if (showSortDropdown) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+
+                            DropdownMenu(
+                                expanded = showSortDropdown,
+                                onDismissRequest = { showSortDropdown = false }
+                            ) {
+                                SortOrder.values().forEach { order ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                RadioButton(
+                                                    selected = sortOrder == order,
+                                                    onClick = null
+                                                )
+                                                Text(order.label)
+                                            }
+                                        },
+                                        onClick = {
+                                            sortOrder = order
+                                            showSortDropdown = false
                                         }
-                                    },
-                                    onClick = {
-                                        sortOrder = order
-                                        showSortDropdown = false
-                                    }
-                                )
+                                    )
+                                }
                             }
                         }
                     }
                 }
-            }
 
-            // 장르 필터 칩
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                FilterChip(
-                    selected = selectedGenre == null,
-                    onClick = { selectedGenre = null },
-                    label = { Text("전체") }
-                )
-                FilterChip(
-                    selected = selectedGenre == "novel",
-                    onClick = { selectedGenre = "novel" },
-                    label = { Text("소설") }
-                )
-                FilterChip(
-                    selected = selectedGenre == "fantasy",
-                    onClick = { selectedGenre = "fantasy" },
-                    label = { Text("판타지") }
-                )
-                FilterChip(
-                    selected = selectedGenre == "essay",
-                    onClick = { selectedGenre = "essay" },
-                    label = { Text("에세이") }
-                )
-            }
-
-            HorizontalDivider()
-
-            // 로딩 중
-            if (isLoading) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
+                // 장르 필터 칩
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    CircularProgressIndicator()
-                }
-
-            } else if (sentences.isEmpty()) {
-                // 문장 없음
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = if (searchQuery.isNotEmpty()) "검색 결과가 없습니다" else "문장이 없습니다",
-                            style = MaterialTheme.typography.titleLarge
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = if (searchQuery.isNotEmpty()) "다른 검색어를 시도해보세요" else "+ 버튼을 눌러 추가하세요",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                    }
-                }
-
-            } else {
-                // ⭐ 문장 목록 + 터치 가능한 스크롤바
-                val listState = rememberLazyListState()
-
-                Box(modifier = Modifier.fillMaxSize()) {
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        // 검색 결과 개수 표시
-                        if (searchQuery.isNotEmpty()) {
-                            item {
-                                Text(
-                                    text = "검색 결과: ${sentences.size}개",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.padding(bottom = 8.dp)
-                                )
-                            }
-                        }
-
-                        // 날짜별 그룹핑
-                        val groupedSentences = sentences.groupBy { it.date }
-
-                        groupedSentences.forEach { (date, dateSentences) ->
-                            // 날짜 헤더
-                            item {
-                                Text(
-                                    text = formatDate(date),
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    modifier = Modifier.padding(vertical = 8.dp)
-                                )
-                            }
-
-                            // 해당 날짜의 문장들
-                            items(
-                                items = dateSentences,
-                                key = { it.id }
-                            ) { sentence ->
-                                SentenceListItem(
-                                    sentence = sentence,
-                                    searchQuery = searchQuery,
-                                    onClick = {
-                                        editingSentence = sentence
-                                        showEditor = true
-                                    },
-                                    onDelete = {
-                                        scope.launch {
-                                            repository.delete(sentence)
-                                            loadSentences()
-                                        }
-                                    }
-                                )
-                            }
-                        }
-                    }
-
-                    // ⭐ 터치 가능한 스크롤바
-                    LazyColumnScrollbar(
-                        listState = listState,
-                        modifier = Modifier
-                            .align(Alignment.CenterEnd)
-                            .fillMaxHeight()
-                            .padding(top = 8.dp, bottom = 8.dp)
+                    FilterChip(
+                        selected = selectedGenre == null,
+                        onClick = { selectedGenre = null },
+                        label = { Text("전체") }
+                    )
+                    FilterChip(
+                        selected = selectedGenre == "novel",
+                        onClick = { selectedGenre = "novel" },
+                        label = { Text("소설") }
+                    )
+                    FilterChip(
+                        selected = selectedGenre == "fantasy",
+                        onClick = { selectedGenre = "fantasy" },
+                        label = { Text("판타지") }
+                    )
+                    FilterChip(
+                        selected = selectedGenre == "poem",
+                        onClick = { selectedGenre = "poem" },
+                        label = { Text("시") }
                     )
                 }
+
+                HorizontalDivider()
+
+                // 로딩 중
+                if (isLoading) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator()
+                    }
+
+                } else if (sentences.isEmpty()) {
+                    // 문장 없음
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = if (searchQuery.isNotEmpty()) "검색 결과가 없습니다" else "문장이 없습니다",
+                                style = MaterialTheme.typography.titleLarge
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = if (searchQuery.isNotEmpty()) "다른 검색어를 시도해보세요" else "+ 버튼을 눌러 추가하세요",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                    }
+
+                } else {
+                    // ⭐ 문장 목록 + 스크롤 위치 유지
+                    val listState = rememberSaveable(saver = LazyListState.Saver) {
+                        LazyListState()
+                    }
+
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            // 검색 결과 개수 표시
+                            if (searchQuery.isNotEmpty()) {
+                                item {
+                                    Text(
+                                        text = "검색 결과: ${sentences.size}개",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(bottom = 8.dp)
+                                    )
+                                }
+                            }
+
+                            // 날짜별 그룹핑
+                            val groupedSentences = sentences.groupBy { it.date }
+
+                            groupedSentences.forEach { (date, dateSentences) ->
+                                // 날짜 헤더
+                                item {
+                                    Text(
+                                        text = formatDate(date),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.padding(vertical = 8.dp)
+                                    )
+                                }
+
+                                // 해당 날짜의 문장들
+                                items(
+                                    items = dateSentences,
+                                    key = { it.id }
+                                ) { sentence ->
+                                    SentenceListItem(
+                                        sentence = sentence,
+                                        searchQuery = searchQuery,
+                                        onClick = {
+                                            editingSentence = sentence
+                                            showEditor = true
+                                        },
+                                        onDelete = {
+                                            scope.launch {
+                                                repository.delete(sentence)
+                                                loadSentences()
+                                            }
+                                        }
+                                    )
+                                }
+                            }
+                        }
+
+                        // 터치 가능한 스크롤바
+                        LazyColumnScrollbar(
+                            listState = listState,
+                            modifier = Modifier
+                                .align(Alignment.CenterEnd)
+                                .fillMaxHeight()
+                                .padding(top = 8.dp, bottom = 8.dp)
+                        )
+                    }
+                }
+            }
+            // ⭐ 편집 화면 (오버레이)
+            if (showEditor) {
+                SentenceEditorScreen(
+                    repository = repository,
+                    sentence = editingSentence,
+                    onDismiss = {
+                        showEditor = false
+                        editingSentence = null
+                        // ⭐ 조건부 리로드: 편집한 경우에만
+                        if (editingSentence != null) {
+                            loadSentences()
+                        }
+                    }
+                )
             }
         }
-    }
 }
 
-
-// ==================== 터치 가능한 스크롤바 ====================
 
 // ==================== 터치 가능한 스크롤바 ====================
 
@@ -614,8 +622,8 @@ enum class SearchType(val label: String) {
  * 정렬 순서
  */
 enum class SortOrder(val label: String) {
-    ASCENDING("오래된순"),
-    DESCENDING("최신순")
+    ASCENDING("1월부터"),
+    DESCENDING("12월부터")
 }
 
 /**
@@ -668,7 +676,7 @@ fun SentenceListItem(
 
                 // 출처, 작가 & 장르
                 Row(
-                    modifier = Modifier.fillMaxWidth(),  // ⭐ 추가
+                    modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -686,9 +694,9 @@ fun SentenceListItem(
                             text = sourceWriter,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,  // ⭐ 추가
-                            overflow = TextOverflow.Ellipsis,  // ⭐ 추가
-                            modifier = Modifier.weight(1f, fill = false)  // ⭐ 추가: 공간만큼만 차지
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
                         )
                     }
 
@@ -701,7 +709,7 @@ fun SentenceListItem(
                             Text(
                                 text = getGenreLabel(it),
                                 style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,  // ⭐ 수정
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                             )
                         }
@@ -765,7 +773,7 @@ private fun getGenreLabel(genre: String): String {
     return when (genre) {
         "novel" -> "소설"
         "fantasy" -> "판타지"
-        "essay" -> "에세이"
+        "poem" -> "시"
         else -> genre
     }
 }
