@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">문장상자</string>
+
+    <string name="widget_label">문장상자</string>
+    <string name="widget_description">원하는 장르를 선택하세요!</string>
+
+</resources>
