@@ -94,69 +94,46 @@ class DailyWidgetConfigActivity : ComponentActivity() {
                 // 1. 복수 장르 조회
                 val genres = dataStoreManager.getWidgetGenres(appWidgetId)
 
-                // 2. 스타일과 배경 저장
+                // 2. 스타일, 배경, 탭 액션 저장 (동기 처리)
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                     dataStoreManager.saveWidgetStyleAndBackground(appWidgetId, styleId, backgroundId)
+
+                    // 탭 액션 확인 및 설정
+                    val currentTapAction = dataStoreManager.getWidgetTapAction(appWidgetId)
+                    if (currentTapAction == DataStoreManager.WidgetTapAction.OPEN_APP) {
+                        dataStoreManager.saveWidgetTapAction(appWidgetId, DataStoreManager.WidgetTapAction.SHOW_NEXT)
+                    }
                 }
 
-                // 3. 위젯 즉시 업데이트 (IO 스레드에서 동기 실행)
-                val updateSuccess = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                // 3. 위젯 업데이트 (CompletableDeferred로 완료 대기)
+                val updateComplete = kotlinx.coroutines.CompletableDeferred<Boolean>()
+
+                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
                     try {
                         val appWidgetManager = AppWidgetManager.getInstance(this@DailyWidgetConfigActivity)
                         val provider = UnifiedWidgetProvider()
 
-                        // 직접 업데이트 (코루틴 내부에서)
-                        val db = AppDatabase.getDatabase(this@DailyWidgetConfigActivity)
-                        val dao = db.dailySentenceDao()
+                        provider.updateAppWidgetWithGenres(
+                            context = this@DailyWidgetConfigActivity,
+                            appWidgetManager = appWidgetManager,
+                            appWidgetId = appWidgetId,
+                            genres = genres,
+                            forceRefresh = true
+                        )
 
-                        val today = java.text.SimpleDateFormat("MMdd", java.util.Locale.getDefault()).format(java.util.Date())
-                        val filteredSentences = dao.getSentencesByDateAndGenres(today, genres)
-
-                        if (filteredSentences.isNotEmpty()) {
-                            val views = android.widget.RemoteViews(packageName, R.layout.widget_daily)
-
-                            // 탭 액션 설정
-                            val tapAction = dataStoreManager.getWidgetTapAction(appWidgetId)
-                            val genresString = genres.joinToString(",")
-
-                            val tapIntent = Intent(this@DailyWidgetConfigActivity, UnifiedWidgetProvider::class.java).apply {
-                                action = "com.example.dailywidget.ACTION_REFRESH"
-                                putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
-                                putExtra("extra_genre", genresString)
-                            }
-
-                            val tapPendingIntent = PendingIntent.getBroadcast(
-                                this@DailyWidgetConfigActivity,
-                                appWidgetId,
-                                tapIntent,
-                                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                            )
-
-                            views.setOnClickPendingIntent(R.id.widget_container, tapPendingIntent)
-                            appWidgetManager.updateAppWidget(appWidgetId, views)
-
-                            kotlinx.coroutines.delay(500)
-
-                            // 이제 정식 업데이트
-                            provider.updateAppWidgetWithGenres(
-                                context = this@DailyWidgetConfigActivity,
-                                appWidgetManager = appWidgetManager,
-                                appWidgetId = appWidgetId,
-                                genres = genres,
-                                forceRefresh = true
-                            )
-
-                            kotlinx.coroutines.delay(1000)
-                        }
-
-                        true
+                        // 업데이트 완료 대기
+                        kotlinx.coroutines.delay(1500)
+                        updateComplete.complete(true)
                     } catch (e: Exception) {
                         e.printStackTrace()
-                        false
+                        updateComplete.complete(false)
                     }
                 }
 
-                // 4. 잠금 해제
+                // 업데이트 완료될 때까지 대기
+                updateComplete.await()
+
+                // 4. 잠금 해제 (종료 전에 처리)
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                     dataStoreManager.setWidgetUpdateLock(appWidgetId, false)
                 }
@@ -171,6 +148,7 @@ class DailyWidgetConfigActivity : ComponentActivity() {
             } catch (e: Exception) {
                 e.printStackTrace()
 
+                // 에러 발생 시에도 잠금 해제
                 kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
                     try {
                         val dataStoreManager = DataStoreManager(this@DailyWidgetConfigActivity)
