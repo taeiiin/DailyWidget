@@ -4,6 +4,7 @@ import com.example.dailywidget.util.ThemeManager
 
 /**
  * 배경 설정 데이터 클래스
+ * 3가지 배경 타입 지원: 단색, 이미지, 그라디언트
  */
 data class BackgroundConfig(
     val isSolid: Boolean = false,
@@ -22,16 +23,21 @@ data class BackgroundConfig(
 
 /**
  * backgroundId 문자열을 BackgroundConfig로 파싱
+ *
+ * 지원 형식:
+ * - solid:#FFFFFF,alpha:0.5
+ * - image:theme:city/img1.jpg,alpha:0.5
+ * - image:file://abc.jpg,alpha:0.5
+ * - gradient:#FF6B9D,#FFC371,horizontal,alpha:0.5
  */
 fun parseBackgroundId(backgroundId: String): BackgroundConfig {
-    // ⭐ alpha 먼저 추출
+    // alpha 추출
     val alpha = backgroundId.split(",").find { it.startsWith("alpha:") }
         ?.substringAfter("alpha:")
         ?.toFloatOrNull() ?: 1.0f
 
     return when {
         backgroundId.startsWith("solid:") -> {
-            // solid:#FFFFFF,alpha:0.5
             val hex = backgroundId.substringAfter("solid:").substringBefore(",alpha:")
             BackgroundConfig(
                 isSolid = true,
@@ -40,22 +46,21 @@ fun parseBackgroundId(backgroundId: String): BackgroundConfig {
             )
         }
         backgroundId.startsWith("image:") -> {
-            // image:theme:city/img1.jpg,alpha:0.5 또는 image:file://abc.jpg,alpha:0.5
             val imagePath = backgroundId.substringAfter("image:").substringBefore(",alpha:")
 
             if (imagePath.startsWith("theme:")) {
-                // theme:city/img1.jpg
+                // 테마 이미지: theme:city/img1.jpg
                 val parsed = ThemeManager.parseThemeImagePath(imagePath)
                 BackgroundConfig(
                     isImage = true,
                     isThemeImage = true,
                     themeId = parsed?.first,
                     themeFileName = parsed?.second,
-                    imageName = imagePath,  // ⭐ "theme:city/img1.jpg" 그대로 저장
+                    imageName = imagePath,  // "theme:city/img1.jpg" 그대로 저장
                     alpha = alpha
                 )
             } else {
-                // file://abc.jpg
+                // 사용자 이미지: file://abc.jpg
                 BackgroundConfig(
                     isImage = true,
                     isThemeImage = false,
@@ -65,7 +70,7 @@ fun parseBackgroundId(backgroundId: String): BackgroundConfig {
             }
         }
         backgroundId.startsWith("gradient:") -> {
-            // gradient:#FF6B9D,#FFC371,horizontal,alpha:0.5
+            // 그라디언트: gradient:#FF6B9D,#FFC371,horizontal,alpha:0.5
             val gradientPart = backgroundId.substringAfter("gradient:").substringBefore(",alpha:")
             val colors = gradientPart.split(",")
 

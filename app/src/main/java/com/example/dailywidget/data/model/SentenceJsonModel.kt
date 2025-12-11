@@ -4,8 +4,6 @@ import com.google.gson.annotations.SerializedName
 
 /**
  * JSON 파일의 문장 데이터 모델
- *
- * ⭐ styleId, backgroundId 제거됨
  * 스타일/배경은 설정에서 전역 관리
  */
 data class SentenceJsonModel(

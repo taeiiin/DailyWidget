@@ -18,31 +18,25 @@ import com.example.dailywidget.data.db.entity.DailySentenceEntity
 import com.example.dailywidget.data.repository.DailySentenceRepository
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import java.util.*
 
 /**
  * 문장 편집 화면 (추가/수정)
- *
- * ⭐ styleId, backgroundId 제거됨
- * 스타일/배경은 설정에서 전역 관리
+ * 날짜, 장르, 텍스트, 출처, 작가, 특이사항 입력
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SentenceEditorScreen(
     repository: DailySentenceRepository,
     sentence: DailySentenceEntity? = null,
-    onDismiss: () -> Unit
+    onDismiss: (needsRefresh: Boolean) -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    // 편집 모드 (null이면 추가, 아니면 수정)
     val isEditMode = sentence != null
 
-    // 상태 관리
+    // 입력 상태
     var date by remember { mutableStateOf(sentence?.date ?: getCurrentDate()) }
     var genre by remember { mutableStateOf(sentence?.genre ?: "novel") }
     var text by remember { mutableStateOf(sentence?.text ?: "") }
@@ -50,10 +44,9 @@ fun SentenceEditorScreen(
     var writer by remember { mutableStateOf(sentence?.writer ?: "") }
     var extra by remember { mutableStateOf(sentence?.extra ?: "") }
 
-    // 다이얼로그 상태
     var showDatePicker by remember { mutableStateOf(false) }
 
-    // 저장 처리
+    /** 문장 저장 */
     fun saveSentence() {
         scope.launch {
             try {
@@ -65,7 +58,6 @@ fun SentenceEditorScreen(
                     source = source.takeIf { it.isNotBlank() },
                     writer = writer.takeIf { it.isNotBlank() },
                     extra = extra.takeIf { it.isNotBlank() }
-                    // ⭐ styleId, backgroundId 제거됨
                 )
 
                 if (isEditMode) {
@@ -74,14 +66,15 @@ fun SentenceEditorScreen(
                     repository.insert(newSentence)
                 }
 
-                onDismiss()
+                onDismiss(true)  // 저장 완료 → 목록 갱신 필요
             } catch (e: Exception) {
                 e.printStackTrace()
+                onDismiss(false)  // 에러 발생 → 갱신 불필요
             }
         }
     }
 
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(onDismissRequest = { onDismiss(false) }) {
         Card(
             modifier = Modifier
                 .fillMaxWidth()
@@ -94,7 +87,7 @@ fun SentenceEditorScreen(
                 TopAppBar(
                     title = { Text(if (isEditMode) "문장 수정" else "문장 추가") },
                     navigationIcon = {
-                        IconButton(onClick = onDismiss) {
+                        IconButton(onClick = { onDismiss(false) }) {  // 취소 → 갱신 불필요
                             Icon(Icons.Default.Close, contentDescription = "닫기")
                         }
                     },
@@ -138,11 +131,10 @@ fun SentenceEditorScreen(
                         }
                     }
 
-                    // ⭐ 장르 선택 (동적)
+                    // 장르 선택 (기본 + 사용자 정의)
                     var allGenres by remember { mutableStateOf<List<com.example.dailywidget.data.repository.DataStoreManager.Genre>>(emptyList()) }
                     var showGenreMenu by remember { mutableStateOf(false) }
 
-                    // 장르 목록 불러오기
                     LaunchedEffect(Unit) {
                         val dataStoreManager = com.example.dailywidget.data.repository.DataStoreManager(context)
                         allGenres = dataStoreManager.getAllGenres()
@@ -196,7 +188,7 @@ fun SentenceEditorScreen(
                             }
                         }
 
-                        // 장르 선택 드롭다운 메뉴
+                        // 장르 선택 드롭다운
                         DropdownMenu(
                             expanded = showGenreMenu,
                             onDismissRequest = { showGenreMenu = false }
@@ -275,7 +267,7 @@ fun SentenceEditorScreen(
                         }
                     }
 
-                    // 문장 입력
+                    // 문장 입력 (필수)
                     OutlinedTextField(
                         value = text,
                         onValueChange = { text = it },
@@ -290,7 +282,7 @@ fun SentenceEditorScreen(
                         )
                     )
 
-                    // 출처 입력
+                    // 출처 입력 (선택)
                     OutlinedTextField(
                         value = source,
                         onValueChange = { source = it },
@@ -303,7 +295,7 @@ fun SentenceEditorScreen(
                         )
                     )
 
-                    // 작가 입력
+                    // 작가 입력 (선택)
                     OutlinedTextField(
                         value = writer,
                         onValueChange = { writer = it },
@@ -316,7 +308,7 @@ fun SentenceEditorScreen(
                         )
                     )
 
-                    // 특이사항 입력
+                    // 특이사항 입력 (선택)
                     OutlinedTextField(
                         value = extra,
                         onValueChange = { extra = it },
@@ -330,9 +322,6 @@ fun SentenceEditorScreen(
                             disabledContainerColor = MaterialTheme.colorScheme.surface
                         )
                     )
-
-                    // ⭐ 스타일/배경 선택 카드 제거됨
-                    // 이제 설정에서 전역적으로 관리
                 }
             }
         }
@@ -362,17 +351,13 @@ fun SentenceEditorScreen(
     }
 }
 
-/**
- * 현재 날짜를 MMdd 형식으로 반환
- */
+/** 현재 날짜를 MMdd 형식으로 반환 */
 private fun getCurrentDate(): String {
     val sdf = SimpleDateFormat("MMdd", Locale.getDefault())
     return sdf.format(Date())
 }
 
-/**
- * 날짜 포맷팅 (MMdd → M월 d일)
- */
+/** 날짜 포맷팅 (MMdd → M월 d일) */
 private fun formatDate(date: String): String {
     return if (date.length == 4) {
         val month = date.substring(0, 2).toIntOrNull() ?: 0

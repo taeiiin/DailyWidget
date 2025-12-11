@@ -6,27 +6,25 @@ import com.example.dailywidget.data.db.entity.DailySentenceEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
-import org.json.JSONObject
 
 /**
  * 초기 데이터 로딩 헬퍼
+ * - assets/sentences.json 파일을 Room DB에 로드
+ * - 최초 1회만 실행 (SharedPreferences로 추적)
+ * - JSON 데이터 업데이트 기능 제공
  */
 object InitialLoadHelper {
 
     private const val PREFS_NAME = "InitialLoadPrefs"
     private const val KEY_DATA_LOADED = "data_loaded"
 
-    /**
-     * 데이터가 이미 로드되었는지 확인
-     */
+    /** 데이터가 이미 로드되었는지 확인 */
     private fun isDataLoaded(context: Context): Boolean {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         return prefs.getBoolean(KEY_DATA_LOADED, false)
     }
 
-    /**
-     * 데이터 로드 완료 표시
-     */
+    /** 데이터 로드 완료 표시 */
     private fun markDataAsLoaded(context: Context) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().putBoolean(KEY_DATA_LOADED, true).apply()
@@ -34,10 +32,10 @@ object InitialLoadHelper {
 
     /**
      * 초기 데이터 로드 (최초 1회만 실행)
+     * assets/sentences.json 파일을 파싱하여 DB에 저장
      */
     suspend fun loadInitialData(context: Context) = withContext(Dispatchers.IO) {
         try {
-            // 이미 로드되었으면 스킵
             if (isDataLoaded(context)) {
                 android.util.Log.d("InitialLoadHelper", "Data already loaded, skipping")
                 return@withContext
@@ -69,7 +67,6 @@ object InitialLoadHelper {
                     source = jsonObject.optString("source").takeIf { it.isNotEmpty() },
                     writer = jsonObject.optString("writer").takeIf { it.isNotEmpty() },
                     extra = jsonObject.optString("extra").takeIf { it.isNotEmpty() }
-                    // ⭐ styleId, backgroundId 제거됨
                 )
                 sentences.add(sentence)
             }
@@ -92,9 +89,7 @@ object InitialLoadHelper {
         }
     }
 
-    /**
-     * 데이터 로딩 플래그 리셋 (재로딩용)
-     */
+    /** 데이터 로딩 플래그 리셋 (재로딩용) */
     fun resetDataLoadFlag(context: Context) {
         val prefs = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
         prefs.edit().putBoolean("initial_data_loaded", false).apply()
@@ -102,13 +97,14 @@ object InitialLoadHelper {
 
     /**
      * JSON 데이터만 업데이트 (사용자 추가 데이터는 유지)
+     * 휴리스틱: id < 10000인 데이터를 JSON 데이터로 간주
      */
     suspend fun updateJsonData(context: Context) {
         try {
             val database = AppDatabase.getDatabase(context)
             val dao = database.dailySentenceDao()
 
-            // 1. JSON 파일 읽기
+            // JSON 파일 읽기
             val json = context.assets.open("sentences.json").bufferedReader().use { it.readText() }
             val jsonArray = JSONArray(json)
 
@@ -130,18 +126,16 @@ object InitialLoadHelper {
                 jsonSentences.add(sentence)
             }
 
-            // 2. 기존 데이터 중 JSON에서 온 것만 찾기 (id 기준)
-            // JSON 데이터는 보통 낮은 id를 가짐
+            // 기존 JSON 데이터 찾기 (id < 10000)
             val allData = dao.getAllSentencesList()
             val maxJsonId = allData.filter {
-                // 간단한 휴리스틱: date 형식이 MMDD이고 id < 1000이면 JSON 데이터
                 it.date.length == 4 && it.id < 10000
             }.maxOfOrNull { it.id } ?: 0
 
-            // 3. JSON 데이터만 삭제
+            // JSON 데이터만 삭제
             allData.filter { it.id <= maxJsonId }.forEach { dao.deleteSentence(it) }
 
-            // 4. 새 JSON 데이터 삽입
+            // 새 JSON 데이터 삽입
             dao.insertSentences(jsonSentences)
 
             android.util.Log.d("InitialLoadHelper", "JSON 데이터 업데이트 완료: ${jsonSentences.size}개")

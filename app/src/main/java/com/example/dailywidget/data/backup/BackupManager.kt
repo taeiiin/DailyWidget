@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import com.example.dailywidget.data.db.AppDatabase
 import com.example.dailywidget.data.db.entity.DailySentenceEntity
+import com.example.dailywidget.data.repository.DataStoreManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -15,6 +16,9 @@ import java.util.*
 
 /**
  * 백업/복원 관리자
+ * - JSON 형식의 백업 파일 생성 및 복원
+ * - 사용자 정의 장르 포함
+ * - 중복 처리 옵션 제공
  */
 class BackupManager(
     private val context: Context,
@@ -46,13 +50,14 @@ class BackupManager(
      * 중복 처리 옵션
      */
     enum class DuplicateHandling {
-        REPLACE,    // 덮어쓰기
-        SKIP,       // 건너뛰기
-        ADD_ALL     // 모두 추가
+        REPLACE,    // 덮어쓰기: 중복 삭제 후 새 문장 추가
+        SKIP,       // 건너뛰기: 중복은 무시하고 신규만 추가
+        ADD_ALL     // 모두 추가: 중복 상관없이 전부 추가
     }
 
     /**
      * 백업 전 정보 조회
+     * 전체 문장 개수, 장르별 개수, 날짜 범위 반환
      */
     suspend fun getBackupInfo(): BackupInfo = withContext(Dispatchers.IO) {
         val dao = database.dailySentenceDao()
@@ -80,22 +85,22 @@ class BackupManager(
     }
 
     /**
-     * JSON으로 내보내기 (날짜 포함 파일명)
+     * JSON 형식으로 백업 파일 내보내기
+     * 버전 2 형식: 사용자 정의 장르 + 문장 데이터
      */
     suspend fun exportToJson(uri: Uri) = withContext(Dispatchers.IO) {
         val dao = database.dailySentenceDao()
         val sentences = dao.getAllSentencesList()
 
-        // ⭐ 사용자 정의 장르 가져오기
-        val dataStoreManager = com.example.dailywidget.data.repository.DataStoreManager(context)
+        val dataStoreManager = DataStoreManager(context)
         val customGenres = dataStoreManager.getCustomGenres()
 
-        // ⭐ 루트 JSON 객체 생성
+        // 루트 JSON 객체 생성 (버전 2)
         val rootObject = JSONObject().apply {
-            put("version", 2)  // ⭐ 버전 2로 업그레이드
+            put("version", 2)
             put("exportDate", SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()))
 
-            // ⭐ 사용자 정의 장르 추가
+            // 사용자 정의 장르
             val genresArray = JSONArray()
             customGenres.forEach { genre ->
                 val genreObject = JSONObject().apply {
@@ -128,17 +133,15 @@ class BackupManager(
     }
 
     /**
-     * 복원 미리보기 (파일 분석)
+     * 복원 미리보기
+     * 파일 분석 후 총 개수, 신규 개수, 중복 개수 반환
      */
     suspend fun getRestorePreview(uri: Uri): RestorePreview = withContext(Dispatchers.IO) {
-        // ⭐ 장르 정보도 미리보기에 포함 가능
-        val genresCount = getCustomGenresCountFromUri(uri)
-
         val sentences = parseJsonFromUri(uri)
         val dao = database.dailySentenceDao()
         val existingSentences = dao.getAllSentencesList()
 
-        // 중복 체크
+        // 중복 체크: 날짜 + 장르 + 텍스트 모두 일치
         val duplicates = sentences.filter { newSentence ->
             existingSentences.any { existing ->
                 existing.date == newSentence.date &&
@@ -156,47 +159,30 @@ class BackupManager(
     }
 
     /**
-     * ⭐ URI에서 사용자 정의 장르 개수 가져오기
-     */
-    private fun getCustomGenresCountFromUri(uri: Uri): Int {
-        var count = 0
-        context.contentResolver.openInputStream(uri)?.use { inputStream ->
-            val reader = BufferedReader(InputStreamReader(inputStream))
-            val jsonString = reader.readText()
-
-            val isV2 = jsonString.trim().startsWith("{")
-            if (isV2) {
-                val rootObject = JSONObject(jsonString)
-                if (rootObject.has("customGenres")) {
-                    count = rootObject.getJSONArray("customGenres").length()
-                }
-            }
-        }
-        return count
-    }
-
-    /**
-     * JSON에서 가져오기 (중복 처리 옵션)
+     * JSON 백업 파일에서 복원
+     * @param uri 백업 파일 URI
+     * @param duplicateHandling 중복 처리 방식
      */
     suspend fun importFromJson(
         uri: Uri,
         duplicateHandling: DuplicateHandling = DuplicateHandling.SKIP
     ) = withContext(Dispatchers.IO) {
-        // ⭐ 1. 먼저 사용자 정의 장르 복원
+        // 1단계: 사용자 정의 장르 복원
         restoreCustomGenres(uri)
 
-        // 2. 문장 복원
+        // 2단계: 문장 복원
         val sentences = parseJsonFromUri(uri)
         val dao = database.dailySentenceDao()
         val existingSentences = dao.getAllSentencesList()
 
         when (duplicateHandling) {
             DuplicateHandling.REPLACE -> {
-                // 덮어쓰기: 중복이면 삭제 후 추가
+                // 중복된 문장 삭제 후 새 문장 추가
                 sentences.forEach { newSentence ->
                     existingSentences.find { existing ->
                         existing.date == newSentence.date &&
-                                existing.genre.equals(newSentence.genre, ignoreCase = true)
+                                existing.genre.equals(newSentence.genre, ignoreCase = true) &&
+                                existing.text == newSentence.text
                     }?.let { duplicate ->
                         dao.deleteSentence(duplicate)
                     }
@@ -205,7 +191,7 @@ class BackupManager(
             }
 
             DuplicateHandling.SKIP -> {
-                // 건너뛰기: 중복 제외하고 추가
+                // 중복 제외하고 신규만 추가
                 val newSentences = sentences.filter { newSentence ->
                     existingSentences.none { existing ->
                         existing.date == newSentence.date &&
@@ -217,14 +203,15 @@ class BackupManager(
             }
 
             DuplicateHandling.ADD_ALL -> {
-                // 모두 추가: 중복 상관없이 전부 추가
+                // 모두 추가: 중복 체크 없이 전부 추가
                 dao.insertSentences(sentences)
             }
         }
     }
 
     /**
-     * URI에서 JSON 파싱
+     * URI에서 JSON 파싱하여 문장 리스트 반환
+     * 버전 1(배열) 및 버전 2(객체) 모두 지원
      */
     private fun parseJsonFromUri(uri: Uri): List<DailySentenceEntity> {
         val sentences = mutableListOf<DailySentenceEntity>()
@@ -233,7 +220,7 @@ class BackupManager(
             val reader = BufferedReader(InputStreamReader(inputStream))
             val jsonString = reader.readText()
 
-            // ⭐ 버전 체크: 루트가 배열이면 v1, 객체면 v2
+            // 버전 체크: 루트가 배열이면 v1, 객체면 v2
             val isV2 = jsonString.trim().startsWith("{")
 
             val jsonArray = if (isV2) {
@@ -264,7 +251,8 @@ class BackupManager(
     }
 
     /**
-     * ⭐ 사용자 정의 장르 복원
+     * 사용자 정의 장르 복원
+     * 버전 2 백업 파일에서 customGenres 추출하여 DataStore에 저장
      */
     private suspend fun restoreCustomGenres(uri: Uri) {
         context.contentResolver.openInputStream(uri)?.use { inputStream ->
@@ -277,10 +265,10 @@ class BackupManager(
             if (isV2) {
                 val rootObject = JSONObject(jsonString)
 
-                // customGenres 있는지 확인
+                // customGenres 필드 확인
                 if (rootObject.has("customGenres")) {
                     val genresArray = rootObject.getJSONArray("customGenres")
-                    val dataStoreManager = com.example.dailywidget.data.repository.DataStoreManager(context)
+                    val dataStoreManager = DataStoreManager(context)
 
                     for (i in 0 until genresArray.length()) {
                         val genreObject = genresArray.getJSONObject(i)
@@ -298,7 +286,8 @@ class BackupManager(
 
     companion object {
         /**
-         * 날짜 포함 백업 파일명 생성
+         * 타임스탬프 포함 백업 파일명 생성
+         * 형식: backup_YYYY_MM_DD_HHmmss.json
          */
         fun generateBackupFileName(): String {
             val dateFormat = SimpleDateFormat("yyyy_MM_dd_HHmmss", Locale.getDefault())

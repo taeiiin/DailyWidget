@@ -1,11 +1,11 @@
 package com.example.dailywidget.util
 
-import android.graphics.Color
 import android.view.Gravity
 import androidx.compose.ui.text.style.TextAlign
 
 /**
  * 위젯 스타일 관리자
+ * 10가지 텍스트 스타일 제공 (색상, 정렬, 굵기 조합)
  */
 object StyleManager {
 
@@ -14,12 +14,14 @@ object StyleManager {
 
     /**
      * 텍스트 스타일
+     * Compose UI와 Android View 모두 지원
      */
     data class TextStyle(
         val color: androidx.compose.ui.graphics.Color,
         val align: TextAlign,
         val isBold: Boolean = false
     ) {
+        /** Compose Color를 Android Color로 변환 */
         fun toAndroidColor(): Int {
             return android.graphics.Color.argb(
                 (color.alpha * 255).toInt(),
@@ -29,6 +31,7 @@ object StyleManager {
             )
         }
 
+        /** TextAlign을 Gravity로 변환 */
         fun toGravity(): Int {
             return when (align) {
                 TextAlign.Left -> Gravity.START
@@ -40,7 +43,7 @@ object StyleManager {
     }
 
     /**
-     * 위젯 스타일
+     * 위젯 스타일 (메인 텍스트, 출처/작가, 특이사항 스타일 포함)
      */
     data class WidgetStyle(
         val id: Int,
@@ -50,9 +53,7 @@ object StyleManager {
         val extraStyle: TextStyle
     )
 
-    /**
-     * 사용 가능한 스타일 목록
-     */
+    /** 사용 가능한 스타일 목록 (10가지) */
     private val styles = listOf(
         WidgetStyle(
             id = 1,
@@ -284,30 +285,22 @@ object StyleManager {
         )
     )
 
-    /**
-     * 스타일 ID로 스타일 가져오기
-     */
+    /** 스타일 ID로 스타일 가져오기 (없으면 첫 번째 스타일 반환) */
     fun getWidgetStyle(styleId: Int): WidgetStyle {
         return styles.find { it.id == styleId } ?: styles.first()
     }
 
-    /**
-     * 모든 스타일 목록 가져오기
-     */
+    /** 모든 스타일 목록 가져오기 */
     fun getAllStyles(): List<WidgetStyle> {
         return styles
     }
 
-    /**
-     * 모든 스타일 ID 목록
-     */
+    /** 모든 스타일 ID 목록 */
     fun getAllStyleIds(): List<Int> {
         return styles.map { it.id }
     }
 
-    /**
-     * 스타일 설명 가져오기
-     */
+    /** 스타일 간단 설명 가져오기 (괄호 앞부분만) */
     fun getStyleDescription(styleId: Int): String {
         return styles.find { it.id == styleId }?.name?.substringBefore(" (") ?: "기본"
     }

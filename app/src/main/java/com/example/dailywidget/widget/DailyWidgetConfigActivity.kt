@@ -8,7 +8,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import kotlinx.coroutines.flow.first
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
@@ -20,7 +19,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.SwipeLeft
-import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -42,16 +40,20 @@ import com.example.dailywidget.ui.components.StylePreview
 import com.example.dailywidget.ui.theme.DailyWidgetTheme
 import com.example.dailywidget.util.ImageManager
 import com.example.dailywidget.util.StyleManager
-import androidx.compose.material.icons.filled.Category
-import com.github.skydoves.colorpicker.compose.*
 import kotlinx.coroutines.launch
 import coil.compose.AsyncImage
 import com.godaddy.android.colorpicker.ClassicColorPicker
 import com.godaddy.android.colorpicker.HsvColor
-import androidx.compose.ui.text.font.FontWeight
 import com.example.dailywidget.util.ThemeManager
-import java.io.File
 
+/**
+ * 위젯 설정 액티비티
+ * - 스타일 선택 (10가지)
+ * - 배경 선택 (컬러/그라디언트/이미지)
+ * - 투명도 조절 (10%~100%, 5% 단위)
+ * - 탭 액션 선택
+ * - 위젯 미리보기
+ */
 class DailyWidgetConfigActivity : ComponentActivity() {
 
     private var appWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID
@@ -89,67 +91,100 @@ class DailyWidgetConfigActivity : ComponentActivity() {
             try {
                 val dataStoreManager = DataStoreManager(this@DailyWidgetConfigActivity)
 
-                // ⭐ 1. 장르 조회
-                val genreId = dataStoreManager.getWidgetGenre(appWidgetId)
-                android.util.Log.d("WidgetConfig", "💾 Saving config with genreId: $genreId")
+                // 1. 복수 장르 조회
+                val genres = dataStoreManager.getWidgetGenres(appWidgetId)
 
-                // ⭐ 2. 설정 저장
+                // 2. 스타일과 배경 저장
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    dataStoreManager.saveWidgetConfig(
-                        appWidgetId,
-                        DataStoreManager.WidgetConfig(
-                            styleId = styleId,
-                            backgroundId = backgroundId,
-                            genreId = genreId
-                        )
-                    )
+                    dataStoreManager.saveWidgetStyleAndBackground(appWidgetId, styleId, backgroundId)
                 }
 
-                kotlinx.coroutines.delay(800)
+                // 3. 위젯 즉시 업데이트 (IO 스레드에서 동기 실행)
+                val updateSuccess = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    try {
+                        val appWidgetManager = AppWidgetManager.getInstance(this@DailyWidgetConfigActivity)
+                        val provider = UnifiedWidgetProvider()
 
-                // ⭐ 3. 확인
-                val savedGenre = dataStoreManager.getWidgetGenre(appWidgetId)
-                android.util.Log.d("WidgetConfig", "✅ Verified genre: $savedGenre")
+                        // 직접 업데이트 (코루틴 내부에서)
+                        val db = AppDatabase.getDatabase(this@DailyWidgetConfigActivity)
+                        val dao = db.dailySentenceDao()
 
-                // ⭐ 4. 수동 업데이트
-                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    val appWidgetManager = AppWidgetManager.getInstance(this@DailyWidgetConfigActivity)
-                    val provider = UnifiedWidgetProvider()
+                        val today = java.text.SimpleDateFormat("MMdd", java.util.Locale.getDefault()).format(java.util.Date())
+                        val filteredSentences = dao.getSentencesByDateAndGenres(today, genres)
 
-                    android.util.Log.d("WidgetConfig", "🔄 Manual update with genre: $savedGenre")
+                        if (filteredSentences.isNotEmpty()) {
+                            val views = android.widget.RemoteViews(packageName, R.layout.widget_daily)
 
-                    provider.updateAppWidget(
-                        context = this@DailyWidgetConfigActivity,
-                        appWidgetManager = appWidgetManager,
-                        appWidgetId = appWidgetId,
-                        genre = savedGenre,
-                        forceRefresh = true
-                    )
+                            // 탭 액션 설정
+                            val tapAction = dataStoreManager.getWidgetTapAction(appWidgetId)
+                            val genresString = genres.joinToString(",")
+
+                            val tapIntent = Intent(this@DailyWidgetConfigActivity, UnifiedWidgetProvider::class.java).apply {
+                                action = "com.example.dailywidget.ACTION_REFRESH"
+                                putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
+                                putExtra("extra_genre", genresString)
+                            }
+
+                            val tapPendingIntent = PendingIntent.getBroadcast(
+                                this@DailyWidgetConfigActivity,
+                                appWidgetId,
+                                tapIntent,
+                                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                            )
+
+                            views.setOnClickPendingIntent(R.id.widget_container, tapPendingIntent)
+                            appWidgetManager.updateAppWidget(appWidgetId, views)
+
+                            kotlinx.coroutines.delay(500)
+
+                            // 이제 정식 업데이트
+                            provider.updateAppWidgetWithGenres(
+                                context = this@DailyWidgetConfigActivity,
+                                appWidgetManager = appWidgetManager,
+                                appWidgetId = appWidgetId,
+                                genres = genres,
+                                forceRefresh = true
+                            )
+
+                            kotlinx.coroutines.delay(1000)
+                        }
+
+                        true
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        false
+                    }
                 }
 
-                // ⭐ 5. 대기
-                kotlinx.coroutines.delay(1500)  // ⭐ 1.5초 대기
+                // 4. 잠금 해제
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    dataStoreManager.setWidgetUpdateLock(appWidgetId, false)
+                }
 
-                // ⭐ 6. 잠금 해제
-                android.util.Log.d("WidgetConfig", "🔓 Unlocking widget $appWidgetId")
-                dataStoreManager.setWidgetUpdateLock(appWidgetId, false)
-
-                android.util.Log.d("WidgetConfig", "✅ Config completed")
-
+                // 5. Activity 종료
                 val resultValue = Intent().apply {
                     putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
                 }
                 setResult(RESULT_OK, resultValue)
                 finish()
+
             } catch (e: Exception) {
                 e.printStackTrace()
-                android.util.Log.e("WidgetConfig", "❌ Error", e)
+
+                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                    try {
+                        val dataStoreManager = DataStoreManager(this@DailyWidgetConfigActivity)
+                        dataStoreManager.setWidgetUpdateLock(appWidgetId, false)
+                    } catch (ignored: Exception) {}
+                }
+
                 finish()
             }
         }
     }
 }
 
+/** 위젯 설정 화면 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WidgetConfigScreen(
@@ -172,12 +207,12 @@ fun WidgetConfigScreen(
     var showStyleDialog by remember { mutableStateOf(false) }
     var showBackgroundDialog by remember { mutableStateOf(false) }
 
-    // ⭐ 장르 이름 가져오기 (제목용)
-    var genreDisplayName by remember { mutableStateOf("") }
+    // 복수 장르 이름 가져오기 (제목용)
+    var genresDisplayName by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
-        val genreId = dataStoreManager.getWidgetGenre(appWidgetId)
-        genreDisplayName = dataStoreManager.getGenreDisplayName(genreId)
+        val genres = dataStoreManager.getWidgetGenres(appWidgetId)
+        genresDisplayName = dataStoreManager.getGenresDisplayName(genres)
     }
 
     LaunchedEffect(initialConfig.value) {
@@ -187,11 +222,11 @@ fun WidgetConfigScreen(
 
     val currentBgConfig = parseBackgroundId(selectedBackgroundId)
 
-    // ⭐ alpha를 State로 관리 (반응형)
+    // alpha를 State로 관리 (반응형)
     var currentAlpha by remember(selectedBackgroundId) { mutableStateOf(currentBgConfig.alpha) }
     val currentHex by remember(selectedBackgroundId) { mutableStateOf(currentBgConfig.hexColor) }
 
-    // ⭐ 배경 업데이트 함수들
+    // 배경 업데이트 함수들
     val updateSolidBackgroundId: (hex: String, alpha: Float) -> Unit = { hex, alpha ->
         selectedBackgroundId = "solid:$hex,alpha:${"%.2f".format(alpha)}"
         currentAlpha = alpha
@@ -213,8 +248,8 @@ fun WidgetConfigScreen(
             TopAppBar(
                 title = {
                     Text(
-                        if (genreDisplayName.isNotEmpty()) {
-                            "$genreDisplayName 위젯 설정"  // ⭐ 장르 이름 포함
+                        if (genresDisplayName.isNotEmpty()) {
+                            "$genresDisplayName 위젯 설정"
                         } else {
                             "위젯 설정"
                         }
@@ -321,7 +356,7 @@ fun WidgetConfigScreen(
                     }
                 }
 
-                // ⭐ 3. 투명도 슬라이더 (모든 배경 타입에서 표시)
+                // 3. 투명도 슬라이더
                 Column {
                     Text(
                         "불투명도 (${"%.0f".format(currentAlpha * 100)}%)",
@@ -330,14 +365,15 @@ fun WidgetConfigScreen(
                     Slider(
                         value = currentAlpha,
                         onValueChange = { newAlpha ->
-                            currentAlpha = newAlpha
-                            // 배경 타입에 따라 업데이트
+                            val roundedAlpha = (kotlin.math.round(newAlpha * 20) / 20).coerceIn(0.1f, 1f)
+                            currentAlpha = roundedAlpha
+
                             when {
                                 currentBgConfig.isSolid -> {
-                                    updateSolidBackgroundId(currentHex, newAlpha)
+                                    updateSolidBackgroundId(currentHex, roundedAlpha)
                                 }
                                 currentBgConfig.isImage && currentBgConfig.imageName != null -> {
-                                    updateImageBackgroundId(currentBgConfig.imageName, newAlpha)
+                                    updateImageBackgroundId(currentBgConfig.imageName, roundedAlpha)
                                 }
                                 currentBgConfig.isGradient &&
                                         currentBgConfig.gradientStartColor != null &&
@@ -347,16 +383,17 @@ fun WidgetConfigScreen(
                                         currentBgConfig.gradientStartColor,
                                         currentBgConfig.gradientEndColor,
                                         currentBgConfig.gradientDirection,
-                                        newAlpha
+                                        roundedAlpha
                                     )
                                 }
                             }
                         },
-                        valueRange = 0.1f..1f
+                        valueRange = 0.1f..1f,
+                        steps = 17
                     )
                 }
 
-                // ⭐ 3. 탭 액션 선택 (추가)
+                // 3. 탭 액션 선택
                 Text(
                     text = "위젯 클릭 동작",
                     style = MaterialTheme.typography.titleMedium
@@ -367,7 +404,6 @@ fun WidgetConfigScreen(
                     mutableStateOf(DataStoreManager.WidgetTapAction.OPEN_APP)
                 }
 
-                // 초기값 불러오기
                 LaunchedEffect(Unit) {
                     selectedTapAction = dataStoreManager.getWidgetTapAction(appWidgetId)
                 }
@@ -427,7 +463,7 @@ fun WidgetConfigScreen(
             HorizontalDivider()
             WidgetPreview(
                 selectedStyleId = selectedStyleId,
-                currentBgConfig = currentBgConfig.copy(alpha = currentAlpha)  // ⭐ 최신 alpha 반영
+                currentBgConfig = currentBgConfig.copy(alpha = currentAlpha)
             )
         }
     }
@@ -448,7 +484,6 @@ fun WidgetConfigScreen(
             currentAlpha = currentAlpha,
             onBackgroundSelected = { newBgId ->
                 selectedBackgroundId = newBgId
-                // ⭐ 새 배경 선택 시 alpha 동기화
                 currentAlpha = parseBackgroundId(newBgId).alpha
             },
             onDismiss = { showBackgroundDialog = false }
@@ -456,8 +491,7 @@ fun WidgetConfigScreen(
     }
 }
 
-// ==================== 위젯 미리보기 ====================
-
+/** 위젯 미리보기 컴포넌트 */
 @Composable
 fun WidgetPreview(
     selectedStyleId: Int,
@@ -536,10 +570,9 @@ fun WidgetPreview(
                 )
                 .clip(RoundedCornerShape(16.dp))
         ) {
-            // ⭐ 이미지 배경 (투명도 적용)
+            // 이미지 배경 (투명도 적용)
             if (currentBgConfig.isImage && currentBgConfig.imageName != null) {
                 if (currentBgConfig.isThemeImage) {
-                    // ⭐ "theme:" 제거하지 말고 그대로 전달!
                     val assetPath = ThemeManager.getAssetPath(currentBgConfig.imageName)
 
                     if (assetPath != null) {
@@ -623,8 +656,7 @@ fun WidgetPreview(
     }
 }
 
-// ==================== 스타일 선택 다이얼로그 ====================
-
+/** 스타일 선택 다이얼로그 */
 @Composable
 fun StyleSelectionDialog(
     selectedStyleId: Int,
@@ -668,8 +700,7 @@ fun StyleSelectionDialog(
     )
 }
 
-// ==================== 배경 선택 다이얼로그 ====================
-
+/** 배경 선택 다이얼로그 */
 @Composable
 fun BackgroundSelectionDialog(
     currentBgConfig: BackgroundConfig,
@@ -723,12 +754,12 @@ fun BackgroundSelectionDialog(
                     )
                     1 -> GradientTabContent(
                         currentBgConfig = currentBgConfig,
-                        currentAlpha = currentAlpha,  // ⭐ alpha 전달
+                        currentAlpha = currentAlpha,
                         onGradientSelected = onBackgroundSelected
                     )
                     2 -> ImageTabContent(
                         currentBgConfig = currentBgConfig,
-                        currentAlpha = currentAlpha,  // ⭐ alpha 전달
+                        currentAlpha = currentAlpha,
                         onImageSelected = onBackgroundSelected
                     )
                 }
@@ -742,8 +773,7 @@ fun BackgroundSelectionDialog(
     )
 }
 
-// ==================== 컬러 탭 ====================
-
+/** 컬러 탭 */
 @Composable
 fun ColorTabContent(
     currentBgConfig: BackgroundConfig,
@@ -784,8 +814,7 @@ fun ColorTabContent(
     }
 }
 
-// ==================== 팔레트 색상 피커 (세로 쉐이드) ====================
-
+/** 팔레트 색상 피커 (세로 쉐이드) */
 @Composable
 fun PaletteColorPicker(
     currentBgConfig: BackgroundConfig,
@@ -798,7 +827,6 @@ fun PaletteColorPicker(
             .height(400.dp)
             .verticalScroll(rememberScrollState())
     ) {
-        // 특별 색상 (흰색, 검정)
         Row(
             modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -840,8 +868,7 @@ fun PaletteColorPicker(
     }
 }
 
-// ==================== 커스텀 색상 피커 (HSV) ====================
-
+/** 커스텀 색상 피커 (HSV) */
 @Composable
 fun CustomColorPicker(
     currentBgConfig: BackgroundConfig,
@@ -912,12 +939,11 @@ fun CustomColorPicker(
     }
 }
 
-// ==================== 그라디언트 탭 ====================
-
+/** 그라디언트 탭 (HSV) */
 @Composable
 fun GradientTabContent(
     currentBgConfig: BackgroundConfig,
-    currentAlpha: Float,  // ⭐ alpha 파라미터 추가
+    currentAlpha: Float,
     onGradientSelected: (String) -> Unit
 ) {
     var startColor by remember {
@@ -932,7 +958,6 @@ fun GradientTabContent(
     var showStartColorPicker by remember { mutableStateOf(false) }
     var showEndColorPicker by remember { mutableStateOf(false) }
 
-    // ⭐ currentAlpha 사용 (기존 alpha 대신)
     val updateGradient: () -> Unit = {
         onGradientSelected("gradient:$startColor,$endColor,$direction,alpha:${"%.2f".format(currentAlpha)}")
     }
@@ -948,7 +973,6 @@ fun GradientTabContent(
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // 미리보기
         Text("미리보기", style = MaterialTheme.typography.titleSmall)
         Box(
             modifier = Modifier
@@ -992,7 +1016,7 @@ fun GradientTabContent(
                         )
                     },
                     shape = RoundedCornerShape(8.dp),
-                    alpha = currentAlpha  // ⭐ 투명도 적용
+                    alpha = currentAlpha
                 )
         )
 
@@ -1105,8 +1129,7 @@ fun GradientTabContent(
     }
 }
 
-// ==================== 그라디언트 방향 옵션 ====================
-
+/** 그라디언트 방향 옵션 */
 @Composable
 fun GradientDirectionOption(
     label: String,
@@ -1130,8 +1153,7 @@ fun GradientDirectionOption(
     }
 }
 
-// ==================== 그라디언트 색상 피커 다이얼로그 ====================
-
+/** 그라디언트 색상 피커 다이얼로그 */
 @Composable
 fun GradientColorPickerDialog(
     title: String,
@@ -1198,8 +1220,7 @@ fun GradientColorPickerDialog(
     )
 }
 
-// ==================== 그라디언트 팔레트 피커 ====================
-
+/** 그라디언트 팔레트 피커 */
 @Composable
 fun GradientPalettePicker(
     selectedColor: String,
@@ -1249,8 +1270,7 @@ fun GradientPalettePicker(
     }
 }
 
-// ==================== 그라디언트 커스텀 피커 ====================
-
+/** 그라디언트 커스텀 피커 */
 @Composable
 fun GradientCustomPicker(
     selectedColor: String,
@@ -1320,8 +1340,7 @@ fun GradientCustomPicker(
     }
 }
 
-// ==================== 이미지 탭 (테마별 + 내 이미지) ====================
-
+/** 이미지 탭 (테마별 + 내 이미지) */
 @Composable
 fun ImageTabContent(
     currentBgConfig: BackgroundConfig,
@@ -1332,10 +1351,9 @@ fun ImageTabContent(
     val scope = rememberCoroutineScope()
     var userImages by remember { mutableStateOf(ImageManager.getUserImages(context)) }
 
-    // ⭐ 탭: 0=테마별, 1=내 이미지
+    // 탭: 0=테마별, 1=내 이미지
     var selectedTab by remember { mutableStateOf(0) }
 
-    // 갤러리에서 바로 선택
     val galleryLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
@@ -1354,7 +1372,6 @@ fun ImageTabContent(
     }
 
     Column(modifier = Modifier.fillMaxWidth()) {
-        // ⭐ 탭 선택
         TabRow(selectedTabIndex = selectedTab) {
             Tab(
                 selected = selectedTab == 0,
@@ -1370,7 +1387,6 @@ fun ImageTabContent(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // ⭐ 탭 내용
         when (selectedTab) {
             0 -> ThemeImagesContent(
                 currentBgConfig = currentBgConfig,
@@ -1400,8 +1416,7 @@ fun ImageTabContent(
     }
 }
 
-// ==================== 테마별 이미지 컨텐츠 (가로 스크롤) ====================
-
+/** 테마별 이미지 컨텐츠 (가로 스크롤) */
 @Composable
 fun ThemeImagesContent(
     currentBgConfig: BackgroundConfig,
@@ -1420,7 +1435,6 @@ fun ThemeImagesContent(
             .height(400.dp)
     ) {
         if (selectedTheme == null) {
-            // ⭐ 테마 선택 화면
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -1451,7 +1465,6 @@ fun ThemeImagesContent(
                 }
             }
         } else {
-            // ⭐ 선택된 테마의 이미지 목록 (가로 스크롤)
             Column(modifier = Modifier.fillMaxSize()) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1499,63 +1512,55 @@ fun ThemeImagesContent(
                         }
                     }
                 } else {
-                    // ⭐ 가로 스크롤 갤러리
-                    Row(
+                    // 2열 그리드 (세로 스크롤)
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        themeImages.forEach { themeImage ->
-                            val imagePath = com.example.dailywidget.util.ThemeManager.buildThemeImagePath(
-                                themeImage.themeId,
-                                themeImage.fileName
-                            )
-                            val isSelected = currentBgConfig.isThemeImage &&
-                                    currentBgConfig.imageName == imagePath
-
-                            Card(
-                                modifier = Modifier
-                                    .size(150.dp)  // ⭐ 크게 표시
-                                    .clickable {
-                                        onImageSelected("image:$imagePath,alpha:${"%.2f".format(currentAlpha)}")
-                                    },
-                                shape = RoundedCornerShape(8.dp),
-                                border = if (isSelected) {
-                                    BorderStroke(3.dp, MaterialTheme.colorScheme.primary)
-                                } else {
-                                    BorderStroke(1.dp, Color.Gray)
-                                }
+                        themeImages.chunked(2).forEach { row ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                AsyncImage(
-                                    model = "file:///android_asset/${themeImage.path}",
-                                    contentDescription = null,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.fillMaxSize()
-                                )
+                                row.forEach { themeImage ->
+                                    val imagePath = com.example.dailywidget.util.ThemeManager.buildThemeImagePath(
+                                        themeImage.themeId,
+                                        themeImage.fileName
+                                    )
+                                    val isSelected = currentBgConfig.isThemeImage &&
+                                            currentBgConfig.imageName == imagePath
+
+                                    Card(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .aspectRatio(1f)
+                                            .clickable {
+                                                onImageSelected("image:$imagePath,alpha:${"%.2f".format(currentAlpha)}")
+                                            },
+                                        shape = RoundedCornerShape(8.dp),
+                                        border = if (isSelected) {
+                                            BorderStroke(3.dp, MaterialTheme.colorScheme.primary)
+                                        } else {
+                                            BorderStroke(1.dp, Color.Gray)
+                                        }
+                                    ) {
+                                        AsyncImage(
+                                            model = "file:///android_asset/${themeImage.path}",
+                                            contentDescription = null,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    }
+                                }
+
+                                // 홀수 개일 때 빈 공간 채우기
+                                if (row.size == 1) {
+                                    Spacer(modifier = Modifier.weight(1f))
+                                }
                             }
                         }
-                    }
-
-                    // ⭐ 스크롤 안내
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Default.SwipeLeft,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "좌우로 스크롤하여 더 많은 이미지 보기",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
                     }
                 }
             }
@@ -1563,6 +1568,7 @@ fun ThemeImagesContent(
     }
 }
 
+/** 테마 카드 */
 @Composable
 fun ThemeCard(
     theme: com.example.dailywidget.util.ThemeManager.Theme,
@@ -1600,8 +1606,7 @@ fun ThemeCard(
     }
 }
 
-// ==================== 내 이미지 컨텐츠 ====================
-
+/** 내 이미지 컨텐츠 */
 @Composable
 fun UserImagesContent(
     currentBgConfig: BackgroundConfig,
@@ -1774,8 +1779,7 @@ fun UserImagesContent(
     }
 }
 
-// ==================== 색상 버튼 컴포넌트 ====================
-
+/** 원형 색상 버튼 */
 @Composable
 fun ColorCircleButton(
     hex: String,
@@ -1804,6 +1808,7 @@ fun ColorCircleButton(
     }
 }
 
+/** 사각형 색상 버튼 */
 @Composable
 fun ColorSquareButton(
     hex: String,
@@ -1836,11 +1841,7 @@ fun ColorSquareButton(
     }
 }
 
-// ==================== 탭 액션 선택 다이얼로그 ====================
-
-/**
- * 탭 액션 선택 다이얼로그
- */
+/** 탭 액션 선택 다이얼로그 */
 @Composable
 private fun TapActionSelectionDialog(
     selectedAction: DataStoreManager.WidgetTapAction,
@@ -1862,7 +1863,7 @@ private fun TapActionSelectionDialog(
                     modifier = Modifier.padding(bottom = 16.dp)
                 )
 
-                DataStoreManager.WidgetTapAction.values().forEach { action ->
+                DataStoreManager.WidgetTapAction.entries.forEach { action ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()

@@ -9,9 +9,13 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.dailywidget.data.db.dao.DailySentenceDao
 import com.example.dailywidget.data.db.entity.DailySentenceEntity
 
+/**
+ * Room 데이터베이스
+ * 버전 3: styleId, backgroundId 제거 (DataStore로 이관)
+ */
 @Database(
     entities = [DailySentenceEntity::class],
-    version = 3,  // ⭐ 버전 2 → 3으로 증가
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -19,7 +23,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun dailySentenceDao(): DailySentenceDao
 
     companion object {
-        @Volatile private var INSTANCE: AppDatabase? = null
+        @Volatile
+        private var INSTANCE: AppDatabase? = null
 
         /**
          * 마이그레이션 1→2: writer 컬럼 추가
@@ -31,7 +36,8 @@ abstract class AppDatabase : RoomDatabase() {
         }
 
         /**
-         * ⭐ 마이그레이션 2→3: styleId, backgroundId 컬럼 제거
+         * 마이그레이션 2→3: styleId, backgroundId 컬럼 제거
+         * 위젯 설정은 DataStore로 이관
          */
         private val MIGRATION_2_3 = object : Migration(2, 3) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -63,6 +69,9 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * 데이터베이스 싱글톤 인스턴스 반환
+         */
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 Room.databaseBuilder(
@@ -70,7 +79,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "daily_widget.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)  // ⭐ 마이그레이션 추가
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .build()
                     .also { INSTANCE = it }
             }

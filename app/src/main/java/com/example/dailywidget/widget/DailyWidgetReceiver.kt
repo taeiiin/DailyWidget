@@ -10,7 +10,10 @@ import android.util.Log
 import java.util.*
 
 /**
- * 자정에 위젯 업데이트를 위한 Receiver
+ * 자정 위젯 업데이트 Receiver
+ * - 매일 자정 00:00에 위젯 업데이트
+ * - 날짜 변경, 재부팅, 앱 업데이트 시 알람 재설정
+ * - Android 버전별 알람 API 대응 (API 23+, 31+)
  */
 class DailyWidgetReceiver : BroadcastReceiver() {
     companion object {
@@ -18,7 +21,8 @@ class DailyWidgetReceiver : BroadcastReceiver() {
         private const val ACTION_MIDNIGHT_UPDATE = "com.example.dailywidget.ACTION_MIDNIGHT_UPDATE"
 
         /**
-         * ⭐ 자정 알람 설정 (정확한 시간)
+         * 자정 알람 설정 (정확한 시간)
+         * Android 버전별로 적절한 알람 API 사용
          */
         fun scheduleMidnightUpdate(context: Context) {
             val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
@@ -36,7 +40,7 @@ class DailyWidgetReceiver : BroadcastReceiver() {
             val calendar = Calendar.getInstance().apply {
                 timeInMillis = System.currentTimeMillis()
 
-                // ⭐ 이미 자정이 지났으면 다음날 자정
+                // 이미 자정이 지났으면 다음날 자정
                 if (get(Calendar.HOUR_OF_DAY) >= 0 && get(Calendar.MINUTE) >= 1) {
                     add(Calendar.DAY_OF_MONTH, 1)
                 }
@@ -47,9 +51,7 @@ class DailyWidgetReceiver : BroadcastReceiver() {
                 set(Calendar.MILLISECOND, 0)
             }
 
-            Log.d(TAG, "Scheduling midnight update at: ${calendar.time}")
-
-            // ⭐ Android 버전별 알람 설정
+            // Android 버전별 알람 설정
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                     // Android 12+ (API 31+)
@@ -59,7 +61,6 @@ class DailyWidgetReceiver : BroadcastReceiver() {
                             calendar.timeInMillis,
                             pendingIntent
                         )
-                        Log.d(TAG, "Exact alarm scheduled (Android 12+)")
                     } else {
                         // 권한 없으면 근사치 알람
                         alarmManager.setAndAllowWhileIdle(
@@ -67,7 +68,6 @@ class DailyWidgetReceiver : BroadcastReceiver() {
                             calendar.timeInMillis,
                             pendingIntent
                         )
-                        Log.w(TAG, "Exact alarm permission denied, using approximate")
                     }
                 } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                     // Android 6+ (API 23+)
@@ -76,7 +76,6 @@ class DailyWidgetReceiver : BroadcastReceiver() {
                         calendar.timeInMillis,
                         pendingIntent
                     )
-                    Log.d(TAG, "Exact alarm scheduled (Android 6+)")
                 } else {
                     // Android 5 이하
                     alarmManager.setExact(
@@ -84,10 +83,8 @@ class DailyWidgetReceiver : BroadcastReceiver() {
                         calendar.timeInMillis,
                         pendingIntent
                     )
-                    Log.d(TAG, "Exact alarm scheduled (Android 5)")
                 }
             } catch (e: SecurityException) {
-                Log.e(TAG, "Failed to schedule alarm: ${e.message}")
                 // 권한 없으면 근사치 알람
                 alarmManager.set(
                     AlarmManager.RTC_WAKEUP,
@@ -98,7 +95,7 @@ class DailyWidgetReceiver : BroadcastReceiver() {
         }
 
         /**
-         * ⭐ 알람 취소
+         * 알람 취소
          */
         fun cancelMidnightUpdate(context: Context) {
             val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
@@ -112,34 +109,28 @@ class DailyWidgetReceiver : BroadcastReceiver() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
             alarmManager.cancel(pendingIntent)
-            Log.d(TAG, "Midnight update cancelled")
         }
     }
 
     override fun onReceive(context: Context, intent: Intent) {
-        Log.d(TAG, "onReceive: ${intent.action}")
 
         when (intent.action) {
             ACTION_MIDNIGHT_UPDATE -> {
-                Log.d(TAG, "Midnight update triggered")
                 // 위젯 업데이트
                 DailyWidgetProvider.updateAllWidgets(context)
 
-                // ⭐ 다음 자정 알람 재설정
+                // 다음 자정 알람 재설정
                 scheduleMidnightUpdate(context)
             }
             Intent.ACTION_DATE_CHANGED -> {
-                Log.d(TAG, "Date changed")
                 DailyWidgetProvider.updateAllWidgets(context)
                 scheduleMidnightUpdate(context)
             }
             Intent.ACTION_BOOT_COMPLETED -> {
-                Log.d(TAG, "Boot completed")
                 // 재부팅 후 알람 재설정
                 scheduleMidnightUpdate(context)
             }
             Intent.ACTION_MY_PACKAGE_REPLACED -> {
-                Log.d(TAG, "App updated")
                 // 앱 업데이트 후 알람 재설정
                 scheduleMidnightUpdate(context)
             }

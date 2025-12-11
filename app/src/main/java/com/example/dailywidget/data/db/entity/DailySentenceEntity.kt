@@ -3,12 +3,15 @@ package com.example.dailywidget.data.db.entity
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
+/**
+ * 문장 데이터 엔티티 구조
+ */
 @Entity(tableName = "daily_sentences")
 data class DailySentenceEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Int = 0,
     val date: String,           // MMdd 형식 (예: "0101")
-    val genre: String,          // "novel", "fantasy", "poem"
+    val genre: String,          // "novel", "fantasy", "poem", ...
     val text: String,           // 메인 문장
     val source: String?,        // 출처 (선택)
     val writer: String?,        // 작가 (선택)

@@ -8,7 +8,6 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -21,10 +20,12 @@ import androidx.compose.ui.unit.dp
 import com.example.dailywidget.data.repository.DataStoreManager
 import com.example.dailywidget.ui.theme.DailyWidgetTheme
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.flow.first
 
 /**
  * 위젯 추가 시 장르 선택 Activity
+ * - 복수 장르 선택 지원 (체크박스)
+ * - 신규 위젯: 장르 선택 → 설정 화면
+ * - 기존 위젯: 바로 설정 화면
  */
 class GenreSelectionActivity : ComponentActivity() {
 
@@ -33,10 +34,8 @@ class GenreSelectionActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // 취소 시 위젯 추가 취소
         setResult(RESULT_CANCELED)
 
-        // appWidgetId 가져오기
         appWidgetId = intent?.extras?.getInt(
             AppWidgetManager.EXTRA_APPWIDGET_ID,
             AppWidgetManager.INVALID_APPWIDGET_ID
@@ -47,12 +46,11 @@ class GenreSelectionActivity : ComponentActivity() {
             return
         }
 
-        // ⭐ 이미 설정된 위젯인지 확인
+        // 이미 설정된 위젯인지 확인
         val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main)
         scope.launch {
             val dataStoreManager = DataStoreManager(this@GenreSelectionActivity)
 
-            // ⭐ 간단한 체크: 위젯이 이미 설정되었는지
             if (dataStoreManager.isWidgetConfigured(appWidgetId)) {
                 // 편집 모드: 바로 설정 화면으로
                 val configIntent = Intent(this@GenreSelectionActivity, DailyWidgetConfigActivity::class.java).apply {
@@ -62,7 +60,7 @@ class GenreSelectionActivity : ComponentActivity() {
                 return@launch
             }
 
-            // ⭐ 새 위젯 추가: 장르 선택 화면 표시
+            // 새 위젯 추가: 장르 선택 화면 표시
             setContent {
                 DailyWidgetTheme {
                     GenreSelectionScreen(
@@ -80,42 +78,47 @@ class GenreSelectionActivity : ComponentActivity() {
         }
     }
 
-    private fun saveGenreAndProceed(genreId: String) {
+    /** 선택한 장르 저장 및 설정 화면으로 이동 */
+    private fun saveGenreAndProceed(genreIds: List<String>) {
         val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main)
         scope.launch {
             try {
                 val dataStoreManager = DataStoreManager(this@GenreSelectionActivity)
 
-                android.util.Log.d("GenreSelection", "🔒 Locking widget $appWidgetId")
-
-                // ⭐ 1. 잠금 설정
+                // 1. 잠금 설정
                 dataStoreManager.setWidgetUpdateLock(appWidgetId, true)
 
-                android.util.Log.d("GenreSelection", "💾 Saving genre: $genreId for widget: $appWidgetId")
-
-                // ⭐ 2. 장르 저장
+                // 2. 복수 장르 저장 + 탭 액션 기본값 설정
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    dataStoreManager.saveWidgetGenre(appWidgetId, genreId)
+                    dataStoreManager.saveWidgetGenres(appWidgetId, genreIds)
+                    dataStoreManager.saveWidgetTapAction(appWidgetId, DataStoreManager.WidgetTapAction.SHOW_NEXT)
+
+                    // 저장 완료 대기 (충분한 시간)
+                    kotlinx.coroutines.delay(200)
                 }
 
-                kotlinx.coroutines.delay(500)
+                // 3. 확인
+                val savedGenres = dataStoreManager.getWidgetGenres(appWidgetId)
 
-                // ⭐ 3. 확인
-                val savedGenre = dataStoreManager.getWidgetGenre(appWidgetId)
-                android.util.Log.d("GenreSelection", "✅ Verified genre: $savedGenre")
-
-                if (savedGenre != genreId) {
-                    android.util.Log.e("GenreSelection", "❌ Mismatch! Expected: $genreId, Got: $savedGenre")
+                if (savedGenres != genreIds) {
                 }
 
-                // ⭐ 4. 설정 화면으로 이동
+                // 4. 설정 화면으로 이동
                 val configIntent = Intent(this@GenreSelectionActivity, DailyWidgetConfigActivity::class.java).apply {
                     putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
                 }
                 startActivityForResult(configIntent, REQUEST_CONFIG)
             } catch (e: Exception) {
                 e.printStackTrace()
-                android.util.Log.e("GenreSelection", "❌ Error", e)
+
+                // 에러 발생 시 잠금 해제
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    try {
+                        val dataStoreManager = DataStoreManager(this@GenreSelectionActivity)
+                        dataStoreManager.setWidgetUpdateLock(appWidgetId, false)
+                    } catch (ignored: Exception) {}
+                }
+
                 setResult(RESULT_CANCELED)
                 finish()
             }
@@ -126,7 +129,20 @@ class GenreSelectionActivity : ComponentActivity() {
         super.onActivityResult(requestCode, resultCode, data)
 
         if (requestCode == REQUEST_CONFIG) {
-            // ⭐ 설정 화면의 결과를 그대로 전달
+            // 설정 화면에서 돌아온 경우
+            if (resultCode == RESULT_CANCELED) {
+                // 취소된 경우 잠금 해제
+                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                    try {
+                        val dataStoreManager = DataStoreManager(this@GenreSelectionActivity)
+                        dataStoreManager.setWidgetUpdateLock(appWidgetId, false)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+            }
+
+            // 설정 화면의 결과를 그대로 전달
             setResult(resultCode, data)
             finish()
         }
@@ -137,11 +153,15 @@ class GenreSelectionActivity : ComponentActivity() {
     }
 }
 
+/**
+ * 장르 선택 화면
+ * 체크박스로 복수 선택 가능
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GenreSelectionScreen(
     appWidgetId: Int,
-    onGenreSelected: (String) -> Unit,
+    onGenreSelected: (List<String>) -> Unit,
     onCancel: () -> Unit
 ) {
     val context = LocalContext.current
@@ -149,9 +169,8 @@ fun GenreSelectionScreen(
 
     var allGenres by remember { mutableStateOf<List<DataStoreManager.Genre>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
-    var selectedGenreId by remember { mutableStateOf("novel") }
+    var selectedGenreIds by remember { mutableStateOf(setOf<String>()) }
 
-    // 장르 목록 불러오기
     LaunchedEffect(Unit) {
         allGenres = dataStoreManager.getAllGenres()
         isLoading = false
@@ -216,7 +235,7 @@ fun GenreSelectionScreen(
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = "장르는 위젯 추가 후 변경할 수 없습니다",
+                                    text = "여러 장르를 선택하면 모두 표시됩니다",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -236,8 +255,14 @@ fun GenreSelectionScreen(
                         defaultGenres.forEach { genre ->
                             GenreCard(
                                 genre = genre,
-                                isSelected = selectedGenreId == genre.id,
-                                onClick = { selectedGenreId = genre.id }
+                                isSelected = genre.id in selectedGenreIds,
+                                onClick = {
+                                    selectedGenreIds = if (genre.id in selectedGenreIds) {
+                                        selectedGenreIds - genre.id
+                                    } else {
+                                        selectedGenreIds + genre.id
+                                    }
+                                }
                             )
                         }
                     }
@@ -256,8 +281,14 @@ fun GenreSelectionScreen(
                         customGenres.forEach { genre ->
                             GenreCard(
                                 genre = genre,
-                                isSelected = selectedGenreId == genre.id,
-                                onClick = { selectedGenreId = genre.id }
+                                isSelected = genre.id in selectedGenreIds,
+                                onClick = {
+                                    selectedGenreIds = if (genre.id in selectedGenreIds) {
+                                        selectedGenreIds - genre.id
+                                    } else {
+                                        selectedGenreIds + genre.id
+                                    }
+                                }
                             )
                         }
                     }
@@ -309,10 +340,15 @@ fun GenreSelectionScreen(
                     }
 
                     Button(
-                        onClick = { onGenreSelected(selectedGenreId) },
-                        modifier = Modifier.weight(1f)
+                        onClick = {
+                            if (selectedGenreIds.isNotEmpty()) {
+                                onGenreSelected(selectedGenreIds.toList())
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                        enabled = selectedGenreIds.isNotEmpty()
                     ) {
-                        Text("다음")
+                        Text("${selectedGenreIds.size}개 장르 선택")
                     }
                 }
             }
@@ -320,6 +356,9 @@ fun GenreSelectionScreen(
     }
 }
 
+/**
+ * 장르 선택 카드 (체크박스)
+ */
 @Composable
 private fun GenreCard(
     genre: DataStoreManager.Genre,
@@ -349,9 +388,9 @@ private fun GenreCard(
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            RadioButton(
-                selected = isSelected,
-                onClick = onClick
+            Checkbox(
+                checked = isSelected,
+                onCheckedChange = { onClick() }
             )
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {

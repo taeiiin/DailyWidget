@@ -18,6 +18,10 @@ import com.example.dailywidget.ui.screens.SentenceListScreen
 import com.example.dailywidget.ui.screens.SettingsScreen
 import com.example.dailywidget.ui.theme.DailyWidgetTheme
 
+/**
+ * 메인 액티비티
+ * 3개 탭으로 구성: 오늘의 문장, 문장 목록, 설정
+ */
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -27,7 +31,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             DailyWidgetTheme {
-                // ⭐ Intent로 전달된 초기 탭 처리
+                // Intent로 전달된 초기 탭 처리
                 val initialTab = when (intent?.getStringExtra("navigate_to")) {
                     "today" -> 0
                     "list" -> 1
@@ -43,32 +47,37 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // ⭐ 새 Intent 처리 (앱이 이미 실행 중일 때)
+    /**
+     * 새 Intent 처리 (앱이 이미 실행 중일 때)
+     */
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-
-        // 새 Intent가 들어오면 Activity 재생성
         recreate()
     }
 }
 
+/**
+ * 메인 화면 Composable
+ * 하단 네비게이션 바를 통한 탭 전환
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
     repository: DailySentenceRepository,
-    initialTab: Int = 0  // ⭐ 초기 탭 파라미터 추가
+    initialTab: Int = 0
 ) {
     var selectedTab by remember { mutableStateOf(initialTab) }
 
-    // ⭐ initialTab 변경 시 selectedTab도 업데이트
+    // initialTab 변경 시 selectedTab도 업데이트
     LaunchedEffect(initialTab) {
         selectedTab = initialTab
     }
+
     Scaffold(
         topBar = {
             TopAppBar(
-                modifier = Modifier.height(58.dp), // 기본 64dp → 48dp로 줄임
+                modifier = Modifier.height(58.dp),
                 title = {
                     Text(
                         when (selectedTab) {

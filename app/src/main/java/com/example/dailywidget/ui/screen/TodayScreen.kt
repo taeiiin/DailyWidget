@@ -24,28 +24,23 @@ import com.example.dailywidget.data.repository.DailySentenceRepository
 import com.example.dailywidget.data.repository.DataStoreManager
 import com.example.dailywidget.util.StyleManager
 import kotlinx.coroutines.launch
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.ui.unit.IntOffset
-import kotlin.math.roundToInt
 import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material.icons.filled.ViewModule
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.runtime.saveable.rememberSaveable
 import java.text.SimpleDateFormat
 import java.util.*
-
-// Pager 관련 import
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.pager.PagerState
-import androidx.compose.foundation.layout.PaddingValues
 
+/**
+ * 오늘의 문장 화면
+ * - 오늘 날짜의 문장 표시
+ * - 카드뷰/목록뷰 전환
+ * - 여러 문장일 경우 페이징
+ * - 공유 기능
+ */
 @Composable
 fun TodayScreen(
     repository: DailySentenceRepository,
@@ -63,22 +58,20 @@ fun TodayScreen(
     var fontSizeConfig by remember { mutableStateOf(DataStoreManager.FontSizeConfig()) }
     var lastCheckedDate by remember { mutableStateOf("") }
 
-    // ⭐ 뷰 모드 상태
     val viewMode by dataStoreManager.getHomeViewModeFlow().collectAsState(
         initial = DataStoreManager.HomeViewMode.CARD
     )
 
-    // ⭐ 편집/삭제를 위한 상태
     var showEditorDialog by remember { mutableStateOf(false) }
     var editingSentence by remember { mutableStateOf<DailySentenceEntity?>(null) }
 
-    val swipeOffset by remember { mutableStateOf(0f) } // 기존 카드 드래그는 유지
-
+    /** 현재 날짜 조회 (MMdd) */
     fun getCurrentDate(): String {
         val sdf = SimpleDateFormat("MMdd", Locale.getDefault())
         return sdf.format(Date())
     }
 
+    /** 오늘 날짜의 문장 로드 */
     fun loadTodayData(date: String) {
         scope.launch {
             try {
@@ -102,6 +95,7 @@ fun TodayScreen(
         loadTodayData(getCurrentDate())
     }
 
+    // 앱이 포그라운드로 돌아올 때 날짜 체크
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
@@ -124,10 +118,9 @@ fun TodayScreen(
             CircularProgressIndicator()
         } else if (sentences.isNotEmpty()) {
 
-            // ==================== 날짜 표시 ====================
+            // 날짜 표시
             val dateText = remember(lastCheckedDate) {
                 try {
-                    // 현재 연도 추가
                     val currentYear = SimpleDateFormat("yyyy", Locale.getDefault()).format(Date())
                     val inputFormat = SimpleDateFormat("yyyyMMdd", Locale.getDefault())
                     val date = inputFormat.parse("$currentYear$lastCheckedDate")
@@ -151,7 +144,7 @@ fun TodayScreen(
                 )
             }
 
-            // ⭐ 뷰 모드 토글 버튼 추가
+            // 뷰 모드 토글
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -195,10 +188,9 @@ fun TodayScreen(
                 )
             }
 
-            // ⭐ 뷰 모드에 따라 다른 UI 표시
+            // 뷰 모드에 따라 다른 UI 표시
             when (viewMode) {
                 DataStoreManager.HomeViewMode.CARD -> {
-                    // 기존 카드뷰 (HorizontalPager)
                     CardView(
                         sentences = sentences,
                         displayConfig = displayConfig,
@@ -209,7 +201,6 @@ fun TodayScreen(
                     )
                 }
                 DataStoreManager.HomeViewMode.LIST -> {
-                    // 새로운 목록뷰
                     ListView(
                         sentences = sentences,
                         repository = repository,
@@ -228,7 +219,7 @@ fun TodayScreen(
             }
 
         } else {
-            // 문장 없을 때 UI
+            // 문장 없을 때
             Card(
                 modifier = Modifier.fillMaxWidth().padding(16.dp)
             ) {
@@ -253,6 +244,7 @@ fun TodayScreen(
     }
 }
 
+/** 출처/작가 텍스트 조합 */
 private fun buildSourceWriterText(
     source: String?,
     writer: String?,
@@ -265,6 +257,7 @@ private fun buildSourceWriterText(
     return if (parts.isNotEmpty()) "- ${parts.joinToString(", ")}" else ""
 }
 
+/** 문장 공유 */
 private fun shareSentence(
     context: Context,
     sentence: DailySentenceEntity,
@@ -293,7 +286,8 @@ private fun shareSentence(
 }
 
 /**
- * ⭐ 카드뷰 컴포넌트
+ * 카드뷰 컴포넌트
+ * HorizontalPager로 여러 문장 스와이프 가능
  */
 @Composable
 private fun CardView(
@@ -375,7 +369,7 @@ private fun CardView(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // 페이징 UI
+        // 페이징 컨트롤
         if (sentences.size > 1) {
             Row(
                 modifier = Modifier
@@ -445,7 +439,8 @@ private fun CardView(
 }
 
 /**
- * ⭐ 목록뷰 컴포넌트
+ * 목록뷰 컴포넌트
+ * 오늘 날짜의 모든 문장을 리스트로 표시
  */
 @Composable
 private fun ListView(
@@ -481,7 +476,8 @@ private fun ListView(
 }
 
 /**
- * ⭐ 오늘의 문장 목록 아이템 (편집/삭제 가능)
+ * 오늘의 문장 목록 아이템
+ * 편집/삭제 기능 포함
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -504,7 +500,6 @@ private fun TodayListItem(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                // 문장
                 Text(
                     text = sentence.text,
                     style = MaterialTheme.typography.bodyLarge,
@@ -514,7 +509,6 @@ private fun TodayListItem(
 
                 Spacer(modifier = Modifier.height(4.dp))
 
-                // 출처, 작가 & 장르
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -539,7 +533,6 @@ private fun TodayListItem(
                         )
                     }
 
-                    // 장르
                     sentence.genre?.let {
                         Surface(
                             shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp),
@@ -561,7 +554,6 @@ private fun TodayListItem(
                 }
             }
 
-            // 삭제 버튼
             IconButton(onClick = { showDeleteDialog = true }) {
                 Icon(
                     Icons.Default.Delete,
@@ -572,7 +564,6 @@ private fun TodayListItem(
         }
     }
 
-    // 삭제 확인 다이얼로그
     if (showDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },

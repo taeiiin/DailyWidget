@@ -11,8 +11,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -28,16 +26,18 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.graphics.Color
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import android.content.Context
-import androidx.compose.material.icons.filled.MenuBook
-import androidx.compose.material.icons.filled.AutoStories
-import androidx.compose.material.icons.filled.Article
-import androidx.compose.material.icons.filled.Label
-import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.text.font.FontWeight
 import com.example.dailywidget.util.InitialLoadHelper
 
+/**
+ * 설정 화면
+ * - 백업/복원
+ * - 장르 관리 (기본 + 사용자 정의)
+ * - 표시 설정
+ * - 폰트 크기
+ * - 앱 정보
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
@@ -51,7 +51,7 @@ fun SettingsScreen(
     val backupManager = BackupManager(context, db)
     val dataStoreManager = DataStoreManager(context)
 
-    // 상태 관리
+    // 다이얼로그 상태
     var showBackupInfoDialog by remember { mutableStateOf(false) }
     var showRestorePreviewDialog by remember { mutableStateOf(false) }
     var showDuplicateOptionDialog by remember { mutableStateOf(false) }
@@ -65,13 +65,12 @@ fun SettingsScreen(
     var restorePreview by remember { mutableStateOf<BackupManager.RestorePreview?>(null) }
     var pendingRestoreUri by remember { mutableStateOf<Uri?>(null) }
 
-    // 기본 설정 상태
+    // 설정 상태
     var isWidgetForceEnabled by remember { mutableStateOf(false) }
     var isHomeForceEnabled by remember { mutableStateOf(false) }
     var displayConfig by remember { mutableStateOf(DataStoreManager.DisplayConfig()) }
     var fontSizeConfig by remember { mutableStateOf(DataStoreManager.FontSizeConfig()) }
 
-    // 초기 로딩
     LaunchedEffect(Unit) {
         isWidgetForceEnabled = dataStoreManager.isWidgetForceStyleEnabled()
         isHomeForceEnabled = dataStoreManager.isHomeForceStyleEnabled()
@@ -79,7 +78,7 @@ fun SettingsScreen(
         fontSizeConfig = dataStoreManager.getFontSizeConfig()
     }
 
-    // 백업 파일 생성
+    // 백업 파일 생성 런처
     val createBackupLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json")
     ) { uri: Uri? ->
@@ -97,7 +96,7 @@ fun SettingsScreen(
         }
     }
 
-    // 백업 파일 선택
+    // 백업 파일 선택 런처
     val selectRestoreLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
@@ -124,7 +123,7 @@ fun SettingsScreen(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
 
-        // ==================== 백업 및 복원 섹션 ====================
+        // ==================== 백업 및 복원 ====================
         SectionHeader(title = "백업 및 복원")
 
         Card(modifier = Modifier.fillMaxWidth()) {
@@ -201,21 +200,20 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // ⭐ ==================== 장르 관리 섹션 (새로 추가) ====================
+        // ==================== 장르 관리 ====================
         SectionHeader(title = "장르 관리")
 
         var customGenres by remember { mutableStateOf<List<DataStoreManager.CustomGenre>>(emptyList()) }
         var showAddGenreDialog by remember { mutableStateOf(false) }
         var genreToDelete by remember { mutableStateOf<DataStoreManager.CustomGenre?>(null) }
 
-        // 장르 목록 불러오기
         LaunchedEffect(Unit) {
             customGenres = dataStoreManager.getCustomGenres()
         }
 
         Card(modifier = Modifier.fillMaxWidth()) {
             Column {
-                // 기본 장르 (삭제 불가)
+                // 기본 장르
                 ListItem(
                     headlineContent = { Text("소설") },
                     supportingContent = { Text("기본 장르") },
@@ -318,7 +316,6 @@ fun SettingsScreen(
                     }
                 }
 
-                // 장르 추가 버튼
                 Divider()
 
                 ListItem(
@@ -335,7 +332,7 @@ fun SettingsScreen(
             }
         }
 
-        // 안내 카드
+        // 장르 관리 안내
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
@@ -425,7 +422,7 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // ==================== 표시 설정 섹션 ====================
+        // ==================== 표시 설정 ====================
         SectionHeader(title = "표시 설정")
 
         Card(modifier = Modifier.fillMaxWidth()) {
@@ -495,7 +492,7 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // ==================== 폰트 크기 설정 섹션 ====================
+        // ==================== 폰트 크기 설정 ====================
         SectionHeader(title = "폰트 크기 설정")
 
         Card(
@@ -528,6 +525,7 @@ fun SettingsScreen(
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp)) {
 
+                // 메인 문장 폰트 크기
                 Text("메인 문장", style = MaterialTheme.typography.labelMedium)
                 Slider(
                     value = fontSizeConfig.textSize,
@@ -539,17 +537,18 @@ fun SettingsScreen(
                             DailyWidgetProvider.updateAllWidgets(context)
                         }
                     },
-                    valueRange = 12f..32f,
-                    steps = 19
+                    valueRange = 8f..25f,
+                    steps = 16
                 )
                 Text(
-                    text = "${fontSizeConfig.textSize.toInt()}p",
+                    text = "${fontSizeConfig.textSize.toInt()}sp",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
 
+                // 출처&작가 폰트 크기
                 Text("출처&작가", style = MaterialTheme.typography.labelMedium)
                 Slider(
                     value = fontSizeConfig.sourceSize,
@@ -561,17 +560,18 @@ fun SettingsScreen(
                             DailyWidgetProvider.updateAllWidgets(context)
                         }
                     },
-                    valueRange = 10f..24f,
+                    valueRange = 6f..20f,
                     steps = 13
                 )
                 Text(
-                    text = "${fontSizeConfig.sourceSize.toInt()}p",
+                    text = "${fontSizeConfig.sourceSize.toInt()}sp",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
 
+                // 특이사항 폰트 크기
                 Text("특이사항", style = MaterialTheme.typography.labelMedium)
                 Slider(
                     value = fontSizeConfig.extraSize,
@@ -583,17 +583,18 @@ fun SettingsScreen(
                             DailyWidgetProvider.updateAllWidgets(context)
                         }
                     },
-                    valueRange = 8f..20f,
-                    steps = 11
+                    valueRange = 5f..15f,
+                    steps = 9
                 )
                 Text(
-                    text = "${fontSizeConfig.extraSize.toInt()}p",
+                    text = "${fontSizeConfig.extraSize.toInt()}sp",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
 
+                // 미리보기
                 Text(
                     text = "미리보기",
                     style = MaterialTheme.typography.labelMedium,
@@ -606,7 +607,7 @@ fun SettingsScreen(
                         containerColor = if (isSystemInDarkTheme()) {
                             MaterialTheme.colorScheme.surfaceVariant
                         } else {
-                            Color.White  // ⭐ 라이트모드: 흰색
+                            Color.White
                         }
                     )
                 ) {
@@ -618,25 +619,26 @@ fun SettingsScreen(
                         Text(
                             text = "예시 문장입니다",
                             fontSize = fontSizeConfig.textSize.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant  // ⭐ 텍스트 색상도 추가
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = "- 출처, 작가",
                             fontSize = fontSizeConfig.sourceSize.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant  // ⭐ 텍스트 색상도 추가
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = "특이사항",
                             fontSize = fontSizeConfig.extraSize.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant  // ⭐ 텍스트 색상도 추가
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
+                // 기본값 초기화 버튼
                 OutlinedButton(
                     onClick = {
                         scope.launch {
@@ -646,19 +648,7 @@ fun SettingsScreen(
                             DailyWidgetProvider.updateAllWidgets(context)
                         }
                     },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isSystemInDarkTheme()) {
-                            MaterialTheme.colorScheme.surfaceVariant
-                        } else {
-                            Color.White  // ⭐ 라이트모드: 흰색 배경
-                        },
-                        contentColor = if (isSystemInDarkTheme()) {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        } else {
-                            MaterialTheme.colorScheme.primary  // ⭐ 라이트모드: 파란색 텍스트
-                        }
-                    ), // ⭐ 테두리 추가
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("기본값으로 초기화")
                 }
@@ -667,7 +657,7 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // ==================== 앱 정보 섹션 ====================
+        // ==================== 앱 정보 ====================
         SectionHeader(title = "앱 정보")
 
         Card(modifier = Modifier.fillMaxWidth()) {
@@ -693,7 +683,9 @@ fun SettingsScreen(
         }
     }
 
-    // ==================== 백업 정보 다이얼로그 ====================
+    // ==================== 다이얼로그들 ====================
+
+    // 백업 정보 다이얼로그
     if (showBackupInfoDialog && backupInfo != null) {
         AlertDialog(
             onDismissRequest = { showBackupInfoDialog = false },
@@ -727,7 +719,7 @@ fun SettingsScreen(
         )
     }
 
-    // ==================== 복원 미리보기 다이얼로그 ====================
+    // 복원 미리보기 다이얼로그
     if (showRestorePreviewDialog && restorePreview != null) {
         AlertDialog(
             onDismissRequest = { showRestorePreviewDialog = false },
@@ -759,7 +751,6 @@ fun SettingsScreen(
                         if (restorePreview!!.duplicateCount > 0) {
                             showDuplicateOptionDialog = true
                         } else {
-                            // 중복 없으면 바로 복원
                             scope.launch {
                                 try {
                                     pendingRestoreUri?.let {
@@ -790,7 +781,7 @@ fun SettingsScreen(
         )
     }
 
-    // ==================== 중복 처리 옵션 다이얼로그 ====================
+    // 중복 처리 옵션 다이얼로그
     if (showDuplicateOptionDialog) {
         var selectedOption by remember { mutableStateOf(BackupManager.DuplicateHandling.SKIP) }
 
@@ -802,7 +793,6 @@ fun SettingsScreen(
                     Text("중복된 문장을 어떻게 처리하시겠습니까?")
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // 덮어쓰기
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -825,7 +815,6 @@ fun SettingsScreen(
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // 건너뛰기 (기본값)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -848,7 +837,6 @@ fun SettingsScreen(
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // 모두 추가
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -913,7 +901,7 @@ fun SettingsScreen(
         )
     }
 
-    // ==================== 성공 메시지 ====================
+    // 성공 메시지
     if (showSuccess) {
         AlertDialog(
             onDismissRequest = { showSuccess = false },
@@ -927,7 +915,7 @@ fun SettingsScreen(
         )
     }
 
-    // ==================== 오류 메시지 ====================
+    // 오류 메시지
     if (showError) {
         AlertDialog(
             onDismissRequest = { showError = false },
@@ -942,9 +930,7 @@ fun SettingsScreen(
     }
 }
 
-/**
- * 설정 섹션 헤더
- */
+/** 설정 섹션 헤더 */
 @Composable
 private fun SectionHeader(
     title: String,
@@ -959,11 +945,7 @@ private fun SectionHeader(
     )
 }
 
-// ⭐ ==================== 장르 추가 다이얼로그 ====================
-
-/**
- * 장르 추가 다이얼로그
- */
+/** 장르 추가 다이얼로그 */
 @Composable
 private fun AddGenreDialog(
     onConfirm: (id: String, displayName: String) -> Unit,
@@ -987,7 +969,6 @@ private fun AddGenreDialog(
                     style = MaterialTheme.typography.bodyMedium
                 )
 
-                // 장르 ID 입력
                 OutlinedTextField(
                     value = genreId,
                     onValueChange = { value ->
@@ -1015,7 +996,6 @@ private fun AddGenreDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                // 장르 표시명 입력
                 OutlinedTextField(
                     value = genreDisplayName,
                     onValueChange = { value ->
@@ -1037,7 +1017,6 @@ private fun AddGenreDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                // 안내 카드
                 Card(
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)

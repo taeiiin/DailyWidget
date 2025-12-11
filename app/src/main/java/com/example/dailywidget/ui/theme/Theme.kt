@@ -13,6 +13,7 @@ import androidx.compose.ui.platform.LocalContext
 
 // ==================== Light Color Scheme ====================
 private val LightColorScheme = lightColorScheme(
+
     // Primary (파란색)
     primary = Blue,
     onPrimary = Color.White,
@@ -38,7 +39,7 @@ private val LightColorScheme = lightColorScheme(
     // Surface (순백색 + #F5F5F5 변형)
     surface = SurfaceLight,
     onSurface = TextPrimary,
-    surfaceVariant = SurfaceVariantLight,        // ⭐ #F5F5F5
+    surfaceVariant = SurfaceVariantLight,
     onSurfaceVariant = TextSecondary,
     surfaceTint = Blue,
 
@@ -70,6 +71,7 @@ private val LightColorScheme = lightColorScheme(
 
 // ==================== Dark Color Scheme ====================
 private val DarkColorScheme = darkColorScheme(
+
     // Primary
     primary = BlueDark,
     onPrimary = Color.White,
@@ -125,6 +127,12 @@ private val DarkColorScheme = darkColorScheme(
     scrim = Color.Black.copy(alpha = 0.5f)
 )
 
+/**
+ * 앱 전체에 적용되는 Material3 테마를 설정하는 Composable 함수
+ * - 시스템 다크모드 여부(darkTheme)에 따라 다크/라이트 테마 자동 적용
+ * - Android 12(S) 이상에서는 dynamicColor 옵션을 사용해 동적 색상 적용 가능
+ * - 내부에서 선택된 colorScheme, Typography 등을 기반으로 MaterialTheme 구성
+ */
 @Composable
 fun DailyWidgetTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),

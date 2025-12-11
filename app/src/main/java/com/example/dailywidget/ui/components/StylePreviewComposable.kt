@@ -14,10 +14,7 @@ import com.example.dailywidget.util.StyleManager
 
 /**
  * 스타일 프리뷰 컴포넌트
- *
- * 사용처:
- * - SentenceEditorScreen에서 스타일 선택 시
- * - 설정 화면에서 스타일 미리보기
+ * 텍스트 스타일(색상, 정렬, 굵기)을 시각적으로 미리보기
  */
 @Composable
 fun StylePreview(
@@ -33,7 +30,7 @@ fun StylePreview(
     ) {
         Column(
             modifier = Modifier
-                .background(MaterialTheme.colorScheme.surfaceVariant)  // ⭐ 수정: 다크모드 대응
+                .background(MaterialTheme.colorScheme.surfaceVariant)
                 .padding(16.dp)
                 .fillMaxWidth()
         ) {
@@ -44,7 +41,7 @@ fun StylePreview(
                 modifier = Modifier.padding(bottom = 12.dp)
             )
 
-            // text 프리뷰 (고정 폰트 크기: 20sp)
+            // 메인 문장 프리뷰
             Text(
                 text = "메인 문장 예시",
                 color = style.textStyle.color,
@@ -55,7 +52,7 @@ fun StylePreview(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // source 프리뷰 (고정 폰트 크기: 14sp)
+            // 출처/작가 프리뷰
             Text(
                 text = "- 출처, 작가",
                 color = style.sourceStyle.color,
@@ -66,7 +63,7 @@ fun StylePreview(
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            // extra 프리뷰 (고정 폰트 크기: 12sp)
+            // 특이사항 프리뷰
             Text(
                 text = "특이사항",
                 color = style.extraStyle.color,
@@ -79,7 +76,8 @@ fun StylePreview(
 }
 
 /**
- * 여러 스타일을 한번에 비교하는 프리뷰
+ * 모든 스타일 비교 프리뷰
+ * 전체 스타일 목록을 한 번에 확인
  */
 @Composable
 fun StyleComparisonPreview(

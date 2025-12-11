@@ -5,7 +5,7 @@ import androidx.compose.ui.graphics.Color
 // ==================== 회색 팔레트 (#F5F5F5 기준) ====================
 
 val Gray50 = Color(0xFFFAFAFA)   // 가장 밝은 회색 (거의 흰색)
-val Gray100 = Color(0xFFF5F5F5)  // ⭐ 기준 색상
+val Gray100 = Color(0xFFF5F5F5)  // 기준 색상
 val Gray200 = Color(0xFFEEEEEE)  // 약간 진한 회색
 val Gray300 = Color(0xFFE0E0E0)  // 구분선용
 val Gray400 = Color(0xFFBDBDBD)  // 비활성 요소
@@ -58,6 +58,7 @@ val DividerDark = Gray700                   // 다크 구분선
 val OutlineDark = Gray600                   // 다크 테두리
 
 // ==================== 레거시 색상 (호환성) ====================
+
 val Purple80 = BlueLight
 val PurpleGrey80 = Gray400
 val Pink80 = BlueVeryLight
