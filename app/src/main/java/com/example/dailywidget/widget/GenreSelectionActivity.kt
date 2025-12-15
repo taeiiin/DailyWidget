@@ -89,12 +89,9 @@ class GenreSelectionActivity : ComponentActivity() {
                 dataStoreManager.setWidgetUpdateLock(appWidgetId, true)
 
                 // 2. 복수 장르 저장 + 탭 액션 기본값 설정
+                // 장르만 저장
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                     dataStoreManager.saveWidgetGenres(appWidgetId, genreIds)
-                    dataStoreManager.saveWidgetTapAction(appWidgetId, DataStoreManager.WidgetTapAction.SHOW_NEXT)
-
-                    // 저장 완료 대기 (충분한 시간)
-                    kotlinx.coroutines.delay(200)
                 }
 
                 // 3. 확인

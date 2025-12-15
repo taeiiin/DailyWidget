@@ -98,40 +98,26 @@ class DailyWidgetConfigActivity : ComponentActivity() {
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                     dataStoreManager.saveWidgetStyleAndBackground(appWidgetId, styleId, backgroundId)
 
-                    // 탭 액션 확인 및 설정
-                    val currentTapAction = dataStoreManager.getWidgetTapAction(appWidgetId)
-                    if (currentTapAction == DataStoreManager.WidgetTapAction.OPEN_APP) {
-                        dataStoreManager.saveWidgetTapAction(appWidgetId, DataStoreManager.WidgetTapAction.SHOW_NEXT)
-                    }
+                    // 탭 액션 무조건 SHOW_NEXT로 설정 (최초 설치 대응)
+                    dataStoreManager.saveWidgetTapAction(appWidgetId, DataStoreManager.WidgetTapAction.SHOW_NEXT)
                 }
 
-                // 3. 위젯 업데이트 (CompletableDeferred로 완료 대기)
-                val updateComplete = kotlinx.coroutines.CompletableDeferred<Boolean>()
+                // 3. 위젯 업데이트 (동기 대기)
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    val appWidgetManager = AppWidgetManager.getInstance(this@DailyWidgetConfigActivity)
+                    val provider = UnifiedWidgetProvider()
 
-                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-                    try {
-                        val appWidgetManager = AppWidgetManager.getInstance(this@DailyWidgetConfigActivity)
-                        val provider = UnifiedWidgetProvider()
+                    provider.updateAppWidgetWithGenres(
+                        context = this@DailyWidgetConfigActivity,
+                        appWidgetManager = appWidgetManager,
+                        appWidgetId = appWidgetId,
+                        genres = genres,
+                        forceRefresh = true
+                    )
 
-                        provider.updateAppWidgetWithGenres(
-                            context = this@DailyWidgetConfigActivity,
-                            appWidgetManager = appWidgetManager,
-                            appWidgetId = appWidgetId,
-                            genres = genres,
-                            forceRefresh = true
-                        )
-
-                        // 업데이트 완료 대기
-                        kotlinx.coroutines.delay(1500)
-                        updateComplete.complete(true)
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                        updateComplete.complete(false)
-                    }
+                    // PendingIntent 등록이 완료되도록 충분히 대기
+                    kotlinx.coroutines.delay(100)
                 }
-
-                // 업데이트 완료될 때까지 대기
-                updateComplete.await()
 
                 // 4. 잠금 해제 (종료 전에 처리)
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {

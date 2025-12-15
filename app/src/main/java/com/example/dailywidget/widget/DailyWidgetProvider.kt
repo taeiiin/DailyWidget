@@ -22,6 +22,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import android.graphics.BitmapFactory
 import com.example.dailywidget.util.ImageManager
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.roundToInt
@@ -46,17 +47,16 @@ abstract class DailyWidgetProvider : AppWidgetProvider() {
         fun updateAllWidgets(context: Context) {
             val appWidgetManager = AppWidgetManager.getInstance(context)
 
-            // UnifiedWidgetProvider만 업데이트
             val unifiedIds = appWidgetManager.getAppWidgetIds(
                 ComponentName(context, UnifiedWidgetProvider::class.java)
             )
 
             val provider = UnifiedWidgetProvider()
+
             unifiedIds.forEach { appWidgetId ->
-                // 각 위젯의 장르들을 DataStore에서 조회하여 업데이트
-                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                CoroutineScope(Dispatchers.IO).launch {
                     try {
-                        val dataStoreManager = com.example.dailywidget.data.repository.DataStoreManager(context)
+                        val dataStoreManager = DataStoreManager(context)
                         val genres = dataStoreManager.getWidgetGenres(appWidgetId)
 
                         provider.updateAppWidgetWithGenres(
@@ -126,14 +126,25 @@ abstract class DailyWidgetProvider : AppWidgetProvider() {
     }
 
     override fun onReceive(context: Context, intent: Intent) {
+
         super.onReceive(context, intent)
+
         if (intent.action == ACTION_REFRESH) {
+
             val appWidgetId = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
-            val genreString = intent.getStringExtra(EXTRA_GENRE) ?: return
+            val genreString = intent.getStringExtra(EXTRA_GENRE)
+
+            if (genreString == null) {
+                return
+            }
+
             if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
                 val appWidgetManager = AppWidgetManager.getInstance(context)
                 val genres = genreString.split(",").map { it.trim() }.filter { it.isNotEmpty() }
-                updateAppWidgetWithGenres(context, appWidgetManager, appWidgetId, genres, forceRefresh = true)
+                CoroutineScope(Dispatchers.IO).launch {
+                    updateAppWidgetWithGenres(context, appWidgetManager, appWidgetId, genres, true)
+                }
+            } else {
             }
         }
     }
@@ -217,7 +228,13 @@ abstract class DailyWidgetProvider : AppWidgetProvider() {
 
                 // ==================== 문장이 있는 경우 ====================
                 val lastSentenceId = if (forceRefresh) dataStoreManager.getLastSentenceId(appWidgetId) else null
+                android.util.Log.d("WidgetProvider", "Before selection - lastSentenceId: $lastSentenceId, forceRefresh: $forceRefresh")
+
                 val sentence = selectRandomSentence(filteredSentences, lastSentenceId) ?: return@launch
+
+                android.util.Log.d("WidgetProvider", "SENTENCE CHANGED: from $lastSentenceId to ${sentence.id}")
+                android.util.Log.d("WidgetProvider", "New sentence text: ${sentence.text}")
+
                 dataStoreManager.saveLastSentenceId(appWidgetId, sentence.id)
 
                 val widgetConfig = dataStoreManager.getWidgetConfig(appWidgetId)
@@ -257,7 +274,9 @@ abstract class DailyWidgetProvider : AppWidgetProvider() {
                         displayConfig = displayConfig
                     )
                 }
+                android.util.Log.d("WidgetProvider", "About to call updateAppWidget with sentence: ${sentence.text.take(30)}")
                 appWidgetManager.updateAppWidget(appWidgetId, views)
+                android.util.Log.d("WidgetProvider", "updateAppWidget called - widget should display: ${sentence.text.take(30)}")
 
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -266,114 +285,105 @@ abstract class DailyWidgetProvider : AppWidgetProvider() {
     }
 
     /** 복수 장르로 위젯 업데이트 */
-    fun updateAppWidgetWithGenres(
+    suspend fun updateAppWidgetWithGenres(
         context: Context,
         appWidgetManager: AppWidgetManager,
         appWidgetId: Int,
         genres: List<String>,
         forceRefresh: Boolean = false
     ) {
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                val db = AppDatabase.getDatabase(context)
-                val dao = db.dailySentenceDao()
-                val dataStoreManager = DataStoreManager(context)
+        try {
+            val db = AppDatabase.getDatabase(context)
+            val dao = db.dailySentenceDao()
+            val dataStoreManager = DataStoreManager(context)
 
-                val today = SimpleDateFormat("MMdd", Locale.getDefault()).format(Date())
-                val filteredSentences = dao.getSentencesByDateAndGenres(today, genres)
+            val today = SimpleDateFormat("MMdd", Locale.getDefault()).format(Date())
+            val filteredSentences = dao.getSentencesByDateAndGenres(today, genres)
 
-                val defaultConfig = dataStoreManager.getDefaultConfig()
-                val displayConfig = dataStoreManager.getDisplayConfig()
-                val fontSizeConfig = dataStoreManager.getFontSizeConfig()
+            val defaultConfig = dataStoreManager.getDefaultConfig()
+            val displayConfig = dataStoreManager.getDisplayConfig()
+            val fontSizeConfig = dataStoreManager.getFontSizeConfig()
 
-                val widgetSize = getWidgetSize(appWidgetManager, appWidgetId)
-                val views = RemoteViews(context.packageName, R.layout.widget_daily)
+            val widgetSize = getWidgetSize(appWidgetManager, appWidgetId)
+            val views = RemoteViews(context.packageName, R.layout.widget_daily)
 
-                // ==================== 문장이 없는 경우 ====================
-                if (filteredSentences.isEmpty()) {
-                    views.setViewVisibility(R.id.widget_background_solid, View.VISIBLE)
-                    views.setViewVisibility(R.id.widget_background_image, View.GONE)
-                    views.setInt(R.id.widget_background_solid, "setColorFilter", Color.WHITE)
-                    views.setInt(R.id.widget_background_solid, "setImageAlpha", 255)
+            // --- 문장 없음 처리 ---
+            if (filteredSentences.isEmpty()) {
+                views.setViewVisibility(R.id.widget_background_solid, View.VISIBLE)
+                views.setViewVisibility(R.id.widget_background_image, View.GONE)
+                views.setInt(R.id.widget_background_solid, "setColorFilter", Color.WHITE)
+                views.setInt(R.id.widget_background_solid, "setImageAlpha", 255)
 
-                    views.setTextViewText(R.id.widget_text, "오늘의 문장이 없습니다")
-                    views.setTextViewTextSize(R.id.widget_text, TypedValue.COMPLEX_UNIT_SP, 16f)
-                    views.setTextColor(R.id.widget_text, Color.BLACK)
-                    views.setViewVisibility(R.id.widget_text, View.VISIBLE)
+                views.setTextViewText(R.id.widget_text, "오늘의 문장이 없습니다")
+                views.setTextViewTextSize(R.id.widget_text, TypedValue.COMPLEX_UNIT_SP, 16f)
+                views.setTextColor(R.id.widget_text, Color.BLACK)
+                views.setViewVisibility(R.id.widget_text, View.VISIBLE)
 
-                    views.setViewVisibility(R.id.widget_source, View.GONE)
-                    views.setViewVisibility(R.id.widget_extra, View.GONE)
-                    views.setViewVisibility(R.id.widget_refresh_button, View.GONE)
+                views.setViewVisibility(R.id.widget_source, View.GONE)
+                views.setViewVisibility(R.id.widget_extra, View.GONE)
+                views.setViewVisibility(R.id.widget_refresh_button, View.GONE)
 
-                    val intent = Intent(context, com.example.dailywidget.ui.activity.MainActivity::class.java)
-                    val pendingIntent = PendingIntent.getActivity(
-                        context,
-                        appWidgetId,
-                        intent,
-                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                    )
-                    views.setOnClickPendingIntent(R.id.widget_container, pendingIntent)
-
-                    appWidgetManager.updateAppWidget(appWidgetId, views)
-                    return@launch
-                }
-
-                // ==================== 문장이 있는 경우 ====================
-                val lastSentenceId = if (forceRefresh) dataStoreManager.getLastSentenceId(appWidgetId) else null
-                val sentence = selectRandomSentence(filteredSentences, lastSentenceId) ?: return@launch
-                dataStoreManager.saveLastSentenceId(appWidgetId, sentence.id)
-
-                val widgetConfig = dataStoreManager.getWidgetConfig(appWidgetId)
-                val finalStyleId = widgetConfig.styleId.takeIf { it != 0 } ?: defaultConfig.styleId
-                val finalBackgroundId = widgetConfig.backgroundId.takeIf {
-                    !it.isNullOrEmpty() && it != "default"
-                } ?: defaultConfig.backgroundId
-
-                val style = StyleManager.getWidgetStyle(finalStyleId)
-                val bgConfig = parseBackgroundId(finalBackgroundId)
-
-                val isOnlyOneRow = widgetSize.heightRows == 1
-
-                applyBackground(views, bgConfig, context)
-                applyTextContent(
-                    views = views,
-                    sentence = sentence,
-                    style = style,
-                    fontSizeConfig = fontSizeConfig,
-                    displayConfig = displayConfig,
-                    widgetSize = widgetSize,
-                    isOnlyOneRow = isOnlyOneRow
+                val intent = Intent(context, com.example.dailywidget.ui.activity.MainActivity::class.java)
+                val pendingIntent = PendingIntent.getActivity(
+                    context,
+                    appWidgetId,
+                    intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                 )
+                views.setOnClickPendingIntent(R.id.widget_container, pendingIntent)
 
-                // 탭 액션 조회
-                val tapAction = dataStoreManager.getWidgetTapAction(appWidgetId)
-
-                // 새로고침 버튼 표시 조건: 1행이 아님 + 문장이 2개 이상 + 탭 액션이 "다음 문장"이 아님
-                views.setViewVisibility(
-                    R.id.widget_refresh_button,
-                    if (!isOnlyOneRow && filteredSentences.size > 1 && tapAction != DataStoreManager.WidgetTapAction.SHOW_NEXT) {
-                        View.VISIBLE
-                    } else {
-                        View.GONE
-                    }
-                )
-
-                kotlinx.coroutines.runBlocking {
-                    setupPendingIntentsWithGenres(
-                        context = context,
-                        views = views,
-                        appWidgetId = appWidgetId,
-                        genres = genres,
-                        sentenceCount = filteredSentences.size,
-                        sentence = sentence,
-                        displayConfig = displayConfig
-                    )
-                }
                 appWidgetManager.updateAppWidget(appWidgetId, views)
-
-            } catch (e: Exception) {
-                e.printStackTrace()
+                return
             }
+
+            // --- 문장 선택 ---
+            val lastSentenceId = if (forceRefresh) dataStoreManager.getLastSentenceId(appWidgetId) else null
+            val sentence = selectRandomSentence(filteredSentences, lastSentenceId) ?: return
+            dataStoreManager.saveLastSentenceId(appWidgetId, sentence.id)
+
+            val widgetConfig = dataStoreManager.getWidgetConfig(appWidgetId)
+            val finalStyleId = widgetConfig.styleId.takeIf { it != 0 } ?: defaultConfig.styleId
+            val finalBackgroundId = widgetConfig.backgroundId.takeIf {
+                !it.isNullOrEmpty() && it != "default"
+            } ?: defaultConfig.backgroundId
+
+            val style = StyleManager.getWidgetStyle(finalStyleId)
+            val bgConfig = parseBackgroundId(finalBackgroundId)
+            val isOnlyOneRow = widgetSize.heightRows == 1
+
+            applyBackground(views, bgConfig, context)
+            applyTextContent(
+                views = views,
+                sentence = sentence,
+                style = style,
+                fontSizeConfig = fontSizeConfig,
+                displayConfig = displayConfig,
+                widgetSize = widgetSize,
+                isOnlyOneRow = isOnlyOneRow
+            )
+
+            // 새로고침 버튼 표시 여부
+            val tapAction = dataStoreManager.getWidgetTapAction(appWidgetId)
+            views.setViewVisibility(
+                R.id.widget_refresh_button,
+                if (!isOnlyOneRow && filteredSentences.size > 1 && tapAction != DataStoreManager.WidgetTapAction.SHOW_NEXT)
+                    View.VISIBLE else View.GONE
+            )
+
+            // PendingIntent 등록 (중요!)
+            setupPendingIntentsWithGenres(
+                context = context,
+                views = views,
+                appWidgetId = appWidgetId,
+                genres = genres,
+                sentenceCount = filteredSentences.size,
+                sentence = sentence,
+                displayConfig = displayConfig
+            )
+
+            appWidgetManager.updateAppWidget(appWidgetId, views)
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 
