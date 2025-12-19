@@ -84,6 +84,19 @@
             </intent-filter>
         </receiver>
 
+        <!-- 일일 알림 리시버 -->
+        <receiver
+            android:name=".widget.DailyNotificationReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <!-- 일일 알림 트리거 -->
+                <action android:name="com.example.dailywidget.ACTION_DAILY_NOTIFICATION" />
+                <!-- 부팅 완료 (알람 재설정) -->
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
     </application>
 
 </manifest>

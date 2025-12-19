@@ -29,14 +29,12 @@ class UnifiedWidgetProvider : DailyWidgetProvider() {
                 // 잠금 상태 확인
                 val isLocked = dataStoreManager.isWidgetUpdateLocked(appWidgetId)
                 if (isLocked) {
-                    android.util.Log.d("UnifiedWidget", "Widget $appWidgetId is locked, skipping update")
                     return@launch
                 }
 
                 // 복수 장르 조회
                 val genres = dataStoreManager.getWidgetGenres(appWidgetId)
                 if (genres.isEmpty()) {
-                    android.util.Log.d("UnifiedWidget", "Widget $appWidgetId has no genres, skipping update")
                     return@launch
                 }
 

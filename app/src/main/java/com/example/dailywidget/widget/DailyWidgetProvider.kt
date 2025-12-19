@@ -96,14 +96,12 @@ abstract class DailyWidgetProvider : AppWidgetProvider() {
                 // 잠금 상태 확인
                 val isLocked = dataStoreManager.isWidgetUpdateLocked(appWidgetId)
                 if (isLocked) {
-                    android.util.Log.d("WidgetProvider", "Widget $appWidgetId is locked, skipping update")
                     return@launch
                 }
 
                 // 장르 설정 확인
                 val genres = dataStoreManager.getWidgetGenres(appWidgetId)
                 if (genres.isEmpty()) {
-                    android.util.Log.d("WidgetProvider", "Widget $appWidgetId has no genres, skipping update")
                     return@launch
                 }
 
@@ -158,7 +156,32 @@ abstract class DailyWidgetProvider : AppWidgetProvider() {
 
     override fun onAppWidgetOptionsChanged(context: Context, appWidgetManager: AppWidgetManager, appWidgetId: Int, newOptions: Bundle?) {
         super.onAppWidgetOptionsChanged(context, appWidgetManager, appWidgetId, newOptions)
-        updateAppWidget(context, appWidgetManager, appWidgetId, getGenre(), forceRefresh = false)
+
+        // 복수 장르 지원 버전으로 업데이트
+        CoroutineScope(Dispatchers.IO).launch {
+            val dataStoreManager = DataStoreManager(context)
+
+            // 잠금 확인
+            val isLocked = dataStoreManager.isWidgetUpdateLocked(appWidgetId)
+            if (isLocked) {
+                return@launch
+            }
+
+            // 장르 조회
+            val genres = dataStoreManager.getWidgetGenres(appWidgetId)
+            if (genres.isEmpty()) {
+                return@launch
+            }
+
+            // 복수 장르로 업데이트
+            updateAppWidgetWithGenres(
+                context = context,
+                appWidgetManager = appWidgetManager,
+                appWidgetId = appWidgetId,
+                genres = genres,
+                forceRefresh = false
+            )
+        }
     }
 
     data class WidgetSize(val widthDp: Int, val heightDp: Int, val widthRows: Int, val heightRows: Int, val hasOptions: Boolean)
@@ -228,12 +251,8 @@ abstract class DailyWidgetProvider : AppWidgetProvider() {
 
                 // ==================== 문장이 있는 경우 ====================
                 val lastSentenceId = if (forceRefresh) dataStoreManager.getLastSentenceId(appWidgetId) else null
-                android.util.Log.d("WidgetProvider", "Before selection - lastSentenceId: $lastSentenceId, forceRefresh: $forceRefresh")
 
                 val sentence = selectRandomSentence(filteredSentences, lastSentenceId) ?: return@launch
-
-                android.util.Log.d("WidgetProvider", "SENTENCE CHANGED: from $lastSentenceId to ${sentence.id}")
-                android.util.Log.d("WidgetProvider", "New sentence text: ${sentence.text}")
 
                 dataStoreManager.saveLastSentenceId(appWidgetId, sentence.id)
 

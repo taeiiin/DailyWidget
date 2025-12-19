@@ -94,6 +94,11 @@ class DataStoreManager(private val context: Context) {
 
         // 업데이트 잠금
         private const val WIDGET_UPDATE_LOCK_PREFIX = "widget_update_lock_"
+
+        // 알림 설정
+        private val NOTIFICATION_ENABLED = booleanPreferencesKey("notification_enabled")
+        private val NOTIFICATION_HOUR = intPreferencesKey("notification_hour")
+        private val NOTIFICATION_MINUTE = intPreferencesKey("notification_minute")
     }
 
     /** 위젯 설정 데이터 클래스 */
@@ -523,7 +528,6 @@ class DataStoreManager(private val context: Context) {
             val key = booleanPreferencesKey("$WIDGET_UPDATE_LOCK_PREFIX$appWidgetId")
             preferences[key] = locked
         }
-        android.util.Log.d("DataStore", "Widget $appWidgetId lock: $locked")
     }
 
     /** 위젯 업데이트 잠금 확인 */
@@ -549,6 +553,43 @@ class DataStoreManager(private val context: Context) {
 
     private fun getWidgetTapActionKey(appWidgetId: Int): Preferences.Key<String> {
         return stringPreferencesKey("widget_${appWidgetId}_tap_action")
+    }
+
+    /** 알림 설정 데이터 클래스 */
+    data class NotificationConfig(
+        val enabled: Boolean = false,
+        val hour: Int = 0,
+        val minute: Int = 0
+    )
+
+    /** 알림 설정 저장 */
+    suspend fun saveNotificationConfig(config: NotificationConfig) {
+        context.dataStore.edit { preferences ->
+            preferences[NOTIFICATION_ENABLED] = config.enabled
+            preferences[NOTIFICATION_HOUR] = config.hour
+            preferences[NOTIFICATION_MINUTE] = config.minute
+        }
+    }
+
+    /** 알림 설정 조회 */
+    suspend fun getNotificationConfig(): NotificationConfig {
+        val preferences = context.dataStore.data.first()
+        return NotificationConfig(
+            enabled = preferences[NOTIFICATION_ENABLED] ?: false,
+            hour = preferences[NOTIFICATION_HOUR] ?: 0,
+            minute = preferences[NOTIFICATION_MINUTE] ?: 0
+        )
+    }
+
+    /** 알림 설정 Flow로 관찰 */
+    fun getNotificationConfigFlow(): Flow<NotificationConfig> {
+        return context.dataStore.data.map { preferences ->
+            NotificationConfig(
+                enabled = preferences[NOTIFICATION_ENABLED] ?: false,
+                hour = preferences[NOTIFICATION_HOUR] ?: 0,
+                minute = preferences[NOTIFICATION_MINUTE] ?: 0
+            )
+        }
     }
 }
 

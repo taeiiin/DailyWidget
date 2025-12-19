@@ -50,7 +50,7 @@ object ThemeManager {
         return try {
             val files = context.assets.list("themes/$themeId") ?: emptyArray()
             files
-                .filter { it.endsWith(".jpg") || it.endsWith(".png") || it.endsWith(".jpeg") }
+                .filter { it.endsWith(".jpg") || it.endsWith(".png") || it.endsWith(".webp") || it.endsWith(".jpeg") }
                 .sorted()
                 .map { fileName ->
                     ThemeImage(

@@ -3,6 +3,7 @@ package com.example.dailywidget
 import android.app.Application
 import com.example.dailywidget.data.db.AppDatabase
 import com.example.dailywidget.data.repository.DailySentenceRepository
+import com.example.dailywidget.util.NotificationHelper
 import com.example.dailywidget.widget.DailyWidgetReceiver
 import kotlinx.coroutines.launch
 
@@ -28,7 +29,8 @@ class MyApp : Application() {
 
         // ⭐ 앱 시작 시 자정 알람 설정
         DailyWidgetReceiver.scheduleMidnightUpdate(this)
+
+        // 알림 채널 생성
+        NotificationHelper.createNotificationChannel(this)
     }
-
-
 }

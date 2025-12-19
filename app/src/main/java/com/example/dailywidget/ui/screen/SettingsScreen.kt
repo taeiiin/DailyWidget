@@ -422,6 +422,136 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(8.dp))
 
+        // ==================== 일일 알림 설정 ====================
+        SectionHeader(title = "일일 알림")
+
+        var notificationConfig by remember { mutableStateOf(DataStoreManager.NotificationConfig()) }
+        var showTimePickerDialog by remember { mutableStateOf(false) }
+
+        LaunchedEffect(Unit) {
+            notificationConfig = dataStoreManager.getNotificationConfig()
+        }
+
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("알림 활성화", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            text = "매일 설정한 시간에 오늘의 문장 개수를 알려드립니다",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = notificationConfig.enabled,
+                        onCheckedChange = { enabled ->
+                            scope.launch {
+                                // Android 13+ 알림 권한 요청은 별도 처리 필요
+                                if (enabled) {
+                                    // 알림 채널 생성
+                                    com.example.dailywidget.util.NotificationHelper.createNotificationChannel(context)
+
+                                    // 기본 시간으로 알림 스케줄링
+                                    val hour = notificationConfig.hour
+                                    val minute = notificationConfig.minute
+                                    com.example.dailywidget.widget.DailyNotificationReceiver.scheduleNotification(
+                                        context, hour, minute
+                                    )
+                                } else {
+                                    // 알림 취소
+                                    com.example.dailywidget.widget.DailyNotificationReceiver.cancelNotification(context)
+                                }
+
+                                val newConfig = notificationConfig.copy(enabled = enabled)
+                                dataStoreManager.saveNotificationConfig(newConfig)
+                                notificationConfig = newConfig
+                            }
+                        }
+                    )
+                }
+
+                if (notificationConfig.enabled) {
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    OutlinedButton(
+                        onClick = { showTimePickerDialog = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            Icons.Default.AccessTime,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = String.format(
+                                "%02d:%02d에 알림",
+                                notificationConfig.hour,
+                                notificationConfig.minute
+                            )
+                        )
+                    }
+                }
+            }
+        }
+
+// 시간 선택 다이얼로그
+        if (showTimePickerDialog) {
+            TimePickerDialog(
+                currentHour = notificationConfig.hour,
+                currentMinute = notificationConfig.minute,
+                onConfirm = { hour, minute ->
+                    scope.launch {
+                        val newConfig = notificationConfig.copy(hour = hour, minute = minute)
+                        dataStoreManager.saveNotificationConfig(newConfig)
+                        notificationConfig = newConfig
+
+                        // 알림 재스케줄링
+                        if (newConfig.enabled) {
+                            com.example.dailywidget.widget.DailyNotificationReceiver.cancelNotification(context)
+                            com.example.dailywidget.widget.DailyNotificationReceiver.scheduleNotification(
+                                context, hour, minute
+                            )
+                        }
+                    }
+                    showTimePickerDialog = false
+                },
+                onDismiss = { showTimePickerDialog = false }
+            )
+        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
+            )
+        ) {
+            Row(
+                modifier = Modifier.padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Default.Info,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "알림은 장르별 문장 개수를 보여줍니다 (예: 소설 5개, 판타지 3개)",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
         // ==================== 표시 설정 ====================
         SectionHeader(title = "표시 설정")
 
@@ -674,7 +804,7 @@ fun SettingsScreen(
 
                 ListItem(
                     headlineContent = { Text("개발자") },
-                    supportingContent = { Text("강태인") },
+                    supportingContent = { Text("Taeiiin") },
                     leadingContent = {
                         Icon(Icons.Default.Person, contentDescription = null)
                     }
@@ -1066,6 +1196,103 @@ private fun AddGenreDialog(
                         nameError == null
             ) {
                 Text("추가")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("취소")
+            }
+        }
+    )
+}
+
+/** 시간 선택 다이얼로그 */
+@Composable
+private fun TimePickerDialog(
+    currentHour: Int,
+    currentMinute: Int,
+    onConfirm: (hour: Int, minute: Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var selectedHour by remember { mutableStateOf(currentHour) }
+    var selectedMinute by remember { mutableStateOf(currentMinute) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("알림 시간 설정") },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // 시 선택
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        IconButton(
+                            onClick = {
+                                selectedHour = (selectedHour + 1) % 24
+                            }
+                        ) {
+                            Icon(Icons.Default.KeyboardArrowUp, contentDescription = "시간 증가")
+                        }
+
+                        Text(
+                            text = String.format("%02d", selectedHour),
+                            style = MaterialTheme.typography.displaySmall,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        IconButton(
+                            onClick = {
+                                selectedHour = if (selectedHour == 0) 23 else selectedHour - 1
+                            }
+                        ) {
+                            Icon(Icons.Default.KeyboardArrowDown, contentDescription = "시간 감소")
+                        }
+                    }
+
+                    Text(
+                        text = ":",
+                        style = MaterialTheme.typography.displaySmall,
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+
+                    // 분 선택
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        IconButton(
+                            onClick = {
+                                selectedMinute = (selectedMinute + 1) % 60
+                            }
+                        ) {
+                            Icon(Icons.Default.KeyboardArrowUp, contentDescription = "분 증가")
+                        }
+
+                        Text(
+                            text = String.format("%02d", selectedMinute),
+                            style = MaterialTheme.typography.displaySmall,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        IconButton(
+                            onClick = {
+                                selectedMinute = if (selectedMinute == 0) 59 else selectedMinute - 1
+                            }
+                        ) {
+                            Icon(Icons.Default.KeyboardArrowDown, contentDescription = "분 감소")
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(selectedHour, selectedMinute) }
+            ) {
+                Text("확인")
             }
         },
         dismissButton = {

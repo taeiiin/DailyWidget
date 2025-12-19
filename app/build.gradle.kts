@@ -39,6 +39,11 @@ android {
         jvmTarget = "11"
     }
 
+    // WebP 압축 해제 방지
+    aaptOptions {
+        noCompress("webp")
+    }
+
     buildFeatures {
         compose = true
     }
