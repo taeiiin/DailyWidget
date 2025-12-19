@@ -89,7 +89,7 @@ object NotificationHelper {
 
         // 알림 생성
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.baseline_menu_book_24)
+            .setSmallIcon(R.drawable.baseline_format_quote_24)
             .setContentTitle("오늘의 문장 (총 ${totalCount}개)")
             .setContentText(contentText)
             .setStyle(NotificationCompat.BigTextStyle().bigText(contentText))
