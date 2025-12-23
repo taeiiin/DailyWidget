@@ -59,9 +59,12 @@ class MainActivity : ComponentActivity() {
                     else -> 0
                 }
 
+                val sharedText = intent?.getStringExtra("shared_text")
+
                 MainScreen(
                     repository = repository,
-                    initialTab = initialTab
+                    initialTab = initialTab,
+                    sharedText = sharedText
                 )
             }
         }
@@ -110,7 +113,8 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun MainScreen(
     repository: DailySentenceRepository,
-    initialTab: Int = 0
+    initialTab: Int = 0,
+    sharedText: String? = null
 ) {
     var selectedTab by remember { mutableStateOf(initialTab) }
 
@@ -161,7 +165,10 @@ fun MainScreen(
         Box(modifier = Modifier.padding(paddingValues)) {
             when (selectedTab) {
                 0 -> TodayScreen(repository = repository)
-                1 -> SentenceListScreen(repository = repository)
+                1 -> SentenceListScreen(
+                    repository = repository,
+                    sharedText = sharedText
+                )
                 2 -> SettingsScreen(repository = repository)
             }
         }

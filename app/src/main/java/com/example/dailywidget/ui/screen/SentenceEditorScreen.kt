@@ -29,6 +29,7 @@ import java.util.*
 fun SentenceEditorScreen(
     repository: DailySentenceRepository,
     sentence: DailySentenceEntity? = null,
+    sharedText: String? = null,
     onDismiss: (needsRefresh: Boolean) -> Unit
 ) {
     val context = LocalContext.current
@@ -39,7 +40,7 @@ fun SentenceEditorScreen(
     // 입력 상태
     var date by remember { mutableStateOf(sentence?.date ?: getCurrentDate()) }
     var genre by remember { mutableStateOf(sentence?.genre ?: "novel") }
-    var text by remember { mutableStateOf(sentence?.text ?: "") }
+    var text by remember { mutableStateOf(sentence?.text ?: sharedText ?: "") }
     var source by remember { mutableStateOf(sentence?.source ?: "") }
     var writer by remember { mutableStateOf(sentence?.writer ?: "") }
     var extra by remember { mutableStateOf(sentence?.extra ?: "") }
@@ -111,23 +112,50 @@ fun SentenceEditorScreen(
                 ) {
 
                     // 날짜 선택
-                    OutlinedCard(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { showDatePicker = true }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(
+                        OutlinedCard(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                                .weight(1f)
+                                .clickable { showDatePicker = true }
                         ) {
-                            Column {
-                                Text("날짜", style = MaterialTheme.typography.labelMedium)
-                                Text(formatDate(date), style = MaterialTheme.typography.bodyLarge)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text("날짜", style = MaterialTheme.typography.labelMedium)
+                                    Text(formatDate(date), style = MaterialTheme.typography.bodyLarge)
+                                }
+                                Icon(Icons.Default.CalendarToday, contentDescription = null)
                             }
-                            Icon(Icons.Default.CalendarToday, contentDescription = null)
+                        }
+
+                        // 랜덤 날짜 버튼
+                        OutlinedCard(
+                            modifier = Modifier.clickable {
+                                date = generateRandomDate()
+                            }
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .padding(16.dp)
+                                    .height(42.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Default.Shuffle,
+                                    contentDescription = "랜덤 날짜",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
                         }
                     }
 
@@ -366,4 +394,16 @@ private fun formatDate(date: String): String {
     } else {
         date
     }
+}
+
+/** 랜덤 날짜 생성 (1월 1일 ~ 12월 31일) */
+private fun generateRandomDate(): String {
+    val month = (1..12).random()
+    val maxDay = when (month) {
+        2 -> 29  // 윤년 고려
+        4, 6, 9, 11 -> 30
+        else -> 31
+    }
+    val day = (1..maxDay).random()
+    return String.format("%02d%02d", month, day)
 }

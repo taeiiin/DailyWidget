@@ -58,6 +58,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 fun SentenceListScreen(
     repository: DailySentenceRepository,
     modifier: Modifier = Modifier,
+    sharedText: String? = null,
     onEditModeChange: (Boolean) -> Unit = {}
 ) {
     val scope = rememberCoroutineScope()
@@ -78,6 +79,13 @@ fun SentenceListScreen(
 
     LaunchedEffect(showEditor) {
         onEditModeChange(showEditor)
+    }
+
+    LaunchedEffect(sharedText) {
+        if (sharedText != null && !showEditor) {
+            editingSentence = null
+            showEditor = true
+        }
     }
 
     /** 문장 목록 로드 */
@@ -444,6 +452,7 @@ fun SentenceListScreen(
             SentenceEditorScreen(
                 repository = repository,
                 sentence = editingSentence,
+                sharedText = sharedText,
                 onDismiss = { needsRefresh ->
                     showEditor = false
                     editingSentence = null

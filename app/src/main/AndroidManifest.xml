@@ -38,6 +38,18 @@
             </intent-filter>
         </activity>
 
+        <!-- 외부 앱 텍스트 공유 수신 -->
+        <activity
+            android:name=".ui.activity.ShareReceiverActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
+
         <!-- 위젯 장르 선택 화면 (위젯 추가 시 첫 단계) -->
         <activity
             android:name=".widget.GenreSelectionActivity"
