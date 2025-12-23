@@ -28,6 +28,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.wrapContentHeight
+import kotlinx.coroutines.launch
 import com.example.dailywidget.util.InitialLoadHelper
 
 /**
@@ -1206,7 +1216,8 @@ private fun AddGenreDialog(
     )
 }
 
-/** 시간 선택 다이얼로그 */
+/** 스크롤 가능한 시간 선택 다이얼로그 */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun TimePickerDialog(
     currentHour: Int,
@@ -1221,71 +1232,34 @@ private fun TimePickerDialog(
         onDismissRequest = onDismiss,
         title = { Text("알림 시간 설정") },
         text = {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(200.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // 시 선택
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        IconButton(
-                            onClick = {
-                                selectedHour = (selectedHour + 1) % 24
-                            }
-                        ) {
-                            Icon(Icons.Default.KeyboardArrowUp, contentDescription = "시간 증가")
-                        }
+                // 시 선택
+                TimePickerColumn(
+                    value = selectedHour,
+                    range = 0..23,
+                    onValueChange = { selectedHour = it },
+                    modifier = Modifier.weight(1f)
+                )
 
-                        Text(
-                            text = String.format("%02d", selectedHour),
-                            style = MaterialTheme.typography.displaySmall,
-                            fontWeight = FontWeight.Bold
-                        )
+                Text(
+                    text = ":",
+                    style = MaterialTheme.typography.displayMedium,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
 
-                        IconButton(
-                            onClick = {
-                                selectedHour = if (selectedHour == 0) 23 else selectedHour - 1
-                            }
-                        ) {
-                            Icon(Icons.Default.KeyboardArrowDown, contentDescription = "시간 감소")
-                        }
-                    }
-
-                    Text(
-                        text = ":",
-                        style = MaterialTheme.typography.displaySmall,
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    )
-
-                    // 분 선택
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        IconButton(
-                            onClick = {
-                                selectedMinute = (selectedMinute + 1) % 60
-                            }
-                        ) {
-                            Icon(Icons.Default.KeyboardArrowUp, contentDescription = "분 증가")
-                        }
-
-                        Text(
-                            text = String.format("%02d", selectedMinute),
-                            style = MaterialTheme.typography.displaySmall,
-                            fontWeight = FontWeight.Bold
-                        )
-
-                        IconButton(
-                            onClick = {
-                                selectedMinute = if (selectedMinute == 0) 59 else selectedMinute - 1
-                            }
-                        ) {
-                            Icon(Icons.Default.KeyboardArrowDown, contentDescription = "분 감소")
-                        }
-                    }
-                }
+                // 분 선택
+                TimePickerColumn(
+                    value = selectedMinute,
+                    range = 0..59,
+                    onValueChange = { selectedMinute = it },
+                    modifier = Modifier.weight(1f)
+                )
             }
         },
         confirmButton = {
@@ -1301,4 +1275,100 @@ private fun TimePickerDialog(
             }
         }
     )
+}
+
+/** 스크롤 가능한 시간 선택 컬럼 */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun TimePickerColumn(
+    value: Int,
+    range: IntRange,
+    onValueChange: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    // value를 index로 변환
+    val valueToIndex = { v: Int -> range.indexOf(v) }
+    val indexToValue = { i: Int -> range.elementAt(i) }
+
+    val listState = rememberLazyListState(
+        initialFirstVisibleItemIndex = valueToIndex(value)
+    )
+    val coroutineScope = rememberCoroutineScope()
+
+    // 현재 중앙에 있는 값 계산
+    val derivedValue by remember {
+        derivedStateOf {
+            val layoutInfo = listState.layoutInfo
+            val viewportCenter = layoutInfo.viewportStartOffset + layoutInfo.viewportSize.height / 2
+
+            layoutInfo.visibleItemsInfo
+                .minByOrNull { kotlin.math.abs((it.offset + it.size / 2) - viewportCenter) }
+                ?.index
+                ?.let { indexToValue(it) }
+                ?: value
+        }
+    }
+
+    // 스크롤 멈췄을 때 선택된 값 업데이트 & 스냅
+    LaunchedEffect(listState.isScrollInProgress) {
+        if (!listState.isScrollInProgress) {
+            onValueChange(derivedValue)
+            listState.animateScrollToItem(valueToIndex(derivedValue))
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxHeight()
+            .width(80.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        // 선택된 항목 배경
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp),
+            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
+            shape = RoundedCornerShape(8.dp)
+        ) {}
+
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(vertical = 76.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            items(
+                count = range.count(),
+                key = { index -> indexToValue(index) }
+            ) { index ->
+                val itemValue = indexToValue(index)
+                val isSelected = itemValue == derivedValue
+
+                Text(
+                    text = String.format("%02d", itemValue),
+                    style = MaterialTheme.typography.displaySmall,
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                    color = if (isSelected) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurface.copy(
+                            alpha = if (kotlin.math.abs(itemValue - derivedValue) <= 2) 1f else 0.3f
+                        )
+                    },
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    modifier = Modifier
+                        .height(48.dp)
+                        .fillMaxWidth()
+                        .clickable {
+                            onValueChange(itemValue)
+                            coroutineScope.launch {
+                                listState.animateScrollToItem(valueToIndex(itemValue))
+                            }
+                        }
+                        .wrapContentHeight(Alignment.CenterVertically)
+                )
+            }
+        }
+    }
 }
