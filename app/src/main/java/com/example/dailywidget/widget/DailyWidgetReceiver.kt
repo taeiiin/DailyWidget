@@ -129,10 +129,16 @@ class DailyWidgetReceiver : BroadcastReceiver() {
             Intent.ACTION_BOOT_COMPLETED -> {
                 // 재부팅 후 알람 재설정
                 scheduleMidnightUpdate(context)
+
+                // 위젯 강제 업데이트 추가 (배경 복원)
+                DailyWidgetProvider.updateAllWidgets(context)
             }
             Intent.ACTION_MY_PACKAGE_REPLACED -> {
                 // 앱 업데이트 후 알람 재설정
                 scheduleMidnightUpdate(context)
+
+                // 위젯 강제 업데이트 추가
+                DailyWidgetProvider.updateAllWidgets(context)
             }
         }
     }
