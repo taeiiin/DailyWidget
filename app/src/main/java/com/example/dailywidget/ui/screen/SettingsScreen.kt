@@ -20,8 +20,15 @@ import androidx.compose.ui.unit.sp
 import com.example.dailywidget.data.backup.BackupManager
 import com.example.dailywidget.data.db.AppDatabase
 import com.example.dailywidget.data.repository.DailySentenceRepository
+import com.example.dailywidget.util.SentenceFileExporter
 import com.example.dailywidget.data.repository.DataStoreManager
 import com.example.dailywidget.widget.DailyWidgetProvider
+import com.example.dailywidget.util.SentenceFileParser
+import com.example.dailywidget.util.SentenceFileValidator
+import com.example.dailywidget.ui.components.ImportFileDialog
+import com.example.dailywidget.ui.components.ExportFileDialog
+import com.example.dailywidget.util.TemplateGenerator
+import com.example.dailywidget.ui.components.TemplateDownloadDialog
 import kotlinx.coroutines.launch
 import androidx.compose.ui.graphics.Color
 import kotlinx.coroutines.Dispatchers
@@ -210,23 +217,193 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(8.dp))
 
+        // ==================== 문장 파일 가져오기 ====================
+        SectionHeader(title = "문장 파일 가져오기")
+
+        // 파일 가져오기 상태
+                var showImportDialog by remember { mutableStateOf(false) }
+                var importFileUri by remember { mutableStateOf<Uri?>(null) }
+                var importFileType by remember { mutableStateOf<ImportFileType?>(null) }
+        var showTemplateDialog by remember { mutableStateOf(false) }
+
+        // JSON 파일 선택 런처
+                val selectJsonLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.OpenDocument()
+                ) { uri: Uri? ->
+                    uri?.let {
+                        importFileUri = it
+                        importFileType = ImportFileType.JSON
+                        showImportDialog = true
+                    }
+                }
+
+        // CSV 파일 선택 런처
+                val selectCsvLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.OpenDocument()
+                ) { uri: Uri? ->
+                    uri?.let {
+                        importFileUri = it
+                        importFileType = ImportFileType.CSV
+                        showImportDialog = true
+                    }
+                }
+
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column {
+                ListItem(
+                    headlineContent = { Text("JSON 파일 가져오기") },
+                    supportingContent = { Text("JSON 형식의 문장 파일 불러오기") },
+                    leadingContent = {
+                        Icon(Icons.Default.UploadFile, contentDescription = null)
+                    },
+                    modifier = Modifier.clickable {
+                        selectJsonLauncher.launch(arrayOf("application/json", "text/plain", "*/*"))
+                    }
+                )
+
+                Divider()
+
+                ListItem(
+                    headlineContent = { Text("CSV 파일 가져오기") },
+                    supportingContent = { Text("CSV 형식의 문장 파일 불러오기") },
+                    leadingContent = {
+                        Icon(Icons.Default.TableChart, contentDescription = null)
+                    },
+                    modifier = Modifier.clickable {
+                        selectCsvLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "*/*"))
+                    }
+                )
+
+                Divider()
+
+                ListItem(
+                    headlineContent = { Text("템플릿 다운로드") },
+                    supportingContent = { Text("예시 파일 및 사용 가이드") },
+                    leadingContent = {
+                        Icon(Icons.Default.Download, contentDescription = null)
+                    },
+                    modifier = Modifier.clickable {
+                        showTemplateDialog = true
+                    }
+                )
+            }
+        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
+            )
+        ) {
+            Row(
+                modifier = Modifier.padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Default.Info,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "파일 형식: JSON 또는 CSV. 장르를 지정하여 일괄 가져오기 가능합니다.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        // 파일 가져오기 다이얼로그
+                if (showImportDialog && importFileUri != null && importFileType != null) {
+                    ImportFileDialog(
+                        uri = importFileUri!!,
+                        fileType = importFileType!!,
+                        context = context,
+                        onDismiss = {
+                            showImportDialog = false
+                            importFileUri = null
+                            importFileType = null
+                        },
+                        onSuccess = { message ->
+                            showImportDialog = false
+                            importFileUri = null
+                            importFileType = null
+                            successMessage = message
+                            showSuccess = true
+
+                            // 사용자 정의 장르 목록 갱신
+                            scope.launch {
+                                var customGenres = dataStoreManager.getCustomGenres()
+                            }
+                        },
+                        onError = { message ->
+                            showImportDialog = false
+                            importFileUri = null
+                            importFileType = null
+                            errorMessage = message
+                            showError = true
+                        }
+                    )
+                }
+
+        // 템플릿 다운로드 다이얼로그
+        if (showTemplateDialog) {
+            TemplateDownloadDialog(
+                context = context,
+                onDismiss = { showTemplateDialog = false },
+                onSuccess = { message ->
+                    showTemplateDialog = false
+                    successMessage = message
+                    showSuccess = true
+                },
+                onError = { message ->
+                    showTemplateDialog = false
+                    errorMessage = message
+                    showError = true
+                }
+            )
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
         // ==================== 장르 관리 ====================
         SectionHeader(title = "장르 관리")
 
         var customGenres by remember { mutableStateOf<List<DataStoreManager.CustomGenre>>(emptyList()) }
         var showAddGenreDialog by remember { mutableStateOf(false) }
         var genreToDelete by remember { mutableStateOf<DataStoreManager.CustomGenre?>(null) }
+        var genreCounts by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }  // ⭐ 추가
 
         LaunchedEffect(Unit) {
             customGenres = dataStoreManager.getCustomGenres()
+
+            // ⭐ 장르별 문장 개수 로드
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                val counts = mutableMapOf<String, Int>()
+
+                // 기본 장르
+                counts["novel"] = repository.getSentenceCountByGenre("novel")
+                counts["fantasy"] = repository.getSentenceCountByGenre("fantasy")
+                counts["poem"] = repository.getSentenceCountByGenre("poem")
+
+                // 사용자 정의 장르
+                customGenres.forEach { genre ->
+                    counts[genre.id] = repository.getSentenceCountByGenre(genre.id)
+                }
+
+                genreCounts = counts
+            }
         }
 
         Card(modifier = Modifier.fillMaxWidth()) {
             Column {
-                // 기본 장르
+                // 기본 장르 - 소설
                 ListItem(
                     headlineContent = { Text("소설") },
-                    supportingContent = { Text("기본 장르") },
+                    supportingContent = {
+                        Text("기본 장르 • ${genreCounts["novel"] ?: 0}개 문장")  // ⭐ 수정
+                    },
                     leadingContent = {
                         Icon(Icons.Default.MenuBook, contentDescription = null)
                     },
@@ -247,9 +424,12 @@ fun SettingsScreen(
 
                 Divider()
 
+                // 기본 장르 - 판타지
                 ListItem(
                     headlineContent = { Text("판타지") },
-                    supportingContent = { Text("기본 장르") },
+                    supportingContent = {
+                        Text("기본 장르 • ${genreCounts["fantasy"] ?: 0}개 문장")  // ⭐ 수정
+                    },
                     leadingContent = {
                         Icon(Icons.Default.AutoStories, contentDescription = null)
                     },
@@ -270,9 +450,12 @@ fun SettingsScreen(
 
                 Divider()
 
+                // 기본 장르 - 시
                 ListItem(
                     headlineContent = { Text("시") },
-                    supportingContent = { Text("기본 장르") },
+                    supportingContent = {
+                        Text("기본 장르 • ${genreCounts["poem"] ?: 0}개 문장")  // ⭐ 수정
+                    },
                     leadingContent = {
                         Icon(Icons.Default.Article, contentDescription = null)
                     },
@@ -299,24 +482,60 @@ fun SettingsScreen(
                         ListItem(
                             headlineContent = { Text(genre.displayName) },
                             supportingContent = {
-                                Text(
-                                    "ID: ${genre.id}",
-                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                    style = MaterialTheme.typography.bodySmall
-                                )
+                                Column {
+                                    Text(
+                                        "ID: ${genre.id}",
+                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                    Text(
+                                        "${genreCounts[genre.id] ?: 0}개 문장",  // ⭐ 추가
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
                             },
                             leadingContent = {
                                 Icon(Icons.Default.Label, contentDescription = null)
                             },
                             trailingContent = {
-                                IconButton(
-                                    onClick = { genreToDelete = genre }
-                                ) {
-                                    Icon(
-                                        Icons.Default.Delete,
-                                        contentDescription = "삭제",
-                                        tint = MaterialTheme.colorScheme.error
-                                    )
+                                Row {
+                                    // ⭐ 내보내기 버튼 추가
+                                    IconButton(
+                                        onClick = {
+                                            scope.launch {
+                                                val sentences = repository.getSentencesByGenre(genre.id)
+                                                if (sentences.isEmpty()) {
+                                                    errorMessage = "내보낼 문장이 없습니다"
+                                                    showError = true
+                                                } else {
+                                                    // ExportFileDialog를 장르 1개로 미리 선택된 상태로 열기
+                                                    // TODO: 단일 장르 내보내기 기능
+                                                    android.widget.Toast.makeText(
+                                                        context,
+                                                        "${genre.displayName} ${sentences.size}개 내보내기",
+                                                        android.widget.Toast.LENGTH_SHORT
+                                                    ).show()
+                                                }
+                                            }
+                                        }
+                                    ) {
+                                        Icon(
+                                            Icons.Default.FileDownload,
+                                            contentDescription = "내보내기",
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+
+                                    IconButton(
+                                        onClick = { genreToDelete = genre }
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Delete,
+                                            contentDescription = "삭제",
+                                            tint = MaterialTheme.colorScheme.error
+                                        )
+                                    }
                                 }
                             }
                         )
@@ -376,6 +595,19 @@ fun SettingsScreen(
                         val success = dataStoreManager.addCustomGenre(id, displayName)
                         if (success) {
                             customGenres = dataStoreManager.getCustomGenres()
+
+                            // 개수 갱신
+                            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                val counts = mutableMapOf<String, Int>()
+                                counts["novel"] = repository.getSentenceCountByGenre("novel")
+                                counts["fantasy"] = repository.getSentenceCountByGenre("fantasy")
+                                counts["poem"] = repository.getSentenceCountByGenre("poem")
+                                customGenres.forEach { g ->
+                                    counts[g.id] = repository.getSentenceCountByGenre(g.id)
+                                }
+                                genreCounts = counts
+                            }
+
                             successMessage = "장르가 추가되었습니다"
                             showSuccess = true
                         } else {
@@ -391,31 +623,112 @@ fun SettingsScreen(
 
         // 장르 삭제 확인 다이얼로그
         genreToDelete?.let { genre ->
+            var deleteSentencesAlso by remember { mutableStateOf(false) }
+            val sentenceCount = genreCounts[genre.id] ?: 0
+
             AlertDialog(
                 onDismissRequest = { genreToDelete = null },
                 title = { Text("장르 삭제") },
                 text = {
                     Column {
                         Text("'${genre.displayName}' 장르를 삭제하시겠습니까?")
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            "이 장르를 사용하는 문장은 삭제되지 않습니다.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        if (sentenceCount > 0) {
+                            Card(
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
+                                )
+                            ) {
+                                Column(modifier = Modifier.padding(12.dp)) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable { deleteSentencesAlso = !deleteSentencesAlso },
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Checkbox(
+                                            checked = deleteSentencesAlso,
+                                            onCheckedChange = { deleteSentencesAlso = it }
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Column {
+                                            Text(
+                                                text = "문장도 함께 삭제",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Text(
+                                                text = "${sentenceCount}개의 문장이 영구 삭제됩니다",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.error
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            if (!deleteSentencesAlso) {
+                                Text(
+                                    "장르만 삭제되며, ${sentenceCount}개의 문장은 유지됩니다.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        } else {
+                            Text(
+                                "이 장르에는 문장이 없습니다.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 },
                 confirmButton = {
                     TextButton(
                         onClick = {
                             scope.launch {
-                                val success = dataStoreManager.removeCustomGenre(genre.id)
-                                if (success) {
-                                    customGenres = dataStoreManager.getCustomGenres()
-                                    successMessage = "장르가 삭제되었습니다"
-                                    showSuccess = true
+                                try {
+                                    // 문장 삭제 (옵션 선택 시)
+                                    if (deleteSentencesAlso && sentenceCount > 0) {
+                                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                            val db = AppDatabase.getDatabase(context)
+                                            db.dailySentenceDao().deleteSentencesByGenre(genre.id)
+                                        }
+                                    }
+
+                                    // 장르 삭제
+                                    val success = dataStoreManager.removeCustomGenre(genre.id)
+                                    if (success) {
+                                        customGenres = dataStoreManager.getCustomGenres()
+
+                                        // 개수 갱신
+                                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                                            val counts = mutableMapOf<String, Int>()
+                                            counts["novel"] = repository.getSentenceCountByGenre("novel")
+                                            counts["fantasy"] = repository.getSentenceCountByGenre("fantasy")
+                                            counts["poem"] = repository.getSentenceCountByGenre("poem")
+                                            customGenres.forEach { g ->
+                                                counts[g.id] = repository.getSentenceCountByGenre(g.id)
+                                            }
+                                            genreCounts = counts
+                                        }
+
+                                        successMessage = if (deleteSentencesAlso && sentenceCount > 0) {
+                                            "장르와 ${sentenceCount}개의 문장이 삭제되었습니다"
+                                        } else {
+                                            "장르가 삭제되었습니다"
+                                        }
+                                        showSuccess = true
+                                    }
+                                    genreToDelete = null
+                                } catch (e: Exception) {
+                                    errorMessage = "삭제 실패: ${e.message}"
+                                    showError = true
+                                    genreToDelete = null
                                 }
-                                genreToDelete = null
                             }
                         }
                     ) {
@@ -426,6 +739,103 @@ fun SettingsScreen(
                     TextButton(onClick = { genreToDelete = null }) {
                         Text("취소")
                     }
+                }
+            )
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // ==================== 문장 파일 내보내기 ====================
+        SectionHeader(title = "문장 파일 내보내기")
+
+        var showExportDialog by remember { mutableStateOf(false) }
+
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column {
+                ListItem(
+                    headlineContent = { Text("장르별 내보내기") },
+                    supportingContent = { Text("원하는 장르의 문장만 내보내기") },
+                    leadingContent = {
+                        Icon(Icons.Default.FileDownload, contentDescription = null)
+                    },
+                    modifier = Modifier.clickable {
+                        showExportDialog = true
+                    }
+                )
+
+                Divider()
+
+                ListItem(
+                    headlineContent = { Text("전체 내보내기") },
+                    supportingContent = { Text("모든 문장을 파일로 내보내기") },
+                    leadingContent = {
+                        Icon(Icons.Default.Download, contentDescription = null)
+                    },
+                    modifier = Modifier.clickable {
+                        scope.launch {
+                            try {
+                                val allSentences = repository.getAll()
+                                if (allSentences.isEmpty()) {
+                                    errorMessage = "내보낼 문장이 없습니다"
+                                    showError = true
+                                } else {
+                                    // TODO: 파일 형식 선택 다이얼로그
+                                    android.widget.Toast.makeText(
+                                        context,
+                                        "전체 내보내기: ${allSentences.size}개",
+                                        android.widget.Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            } catch (e: Exception) {
+                                errorMessage = "내보내기 실패: ${e.message}"
+                                showError = true
+                            }
+                        }
+                    }
+                )
+            }
+        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
+            )
+        ) {
+            Row(
+                modifier = Modifier.padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Default.Info,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "내보낸 파일은 백업, 공유, 다른 기기로 이전할 때 사용할 수 있습니다",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        // 내보내기 다이얼로그
+        if (showExportDialog) {
+            ExportFileDialog(
+                repository = repository,
+                context = context,
+                onDismiss = { showExportDialog = false },
+                onSuccess = { message ->
+                    showExportDialog = false
+                    successMessage = message
+                    showSuccess = true
+                },
+                onError = { message ->
+                    showExportDialog = false
+                    errorMessage = message
+                    showError = true
                 }
             )
         }
@@ -1371,4 +1781,9 @@ private fun TimePickerColumn(
             }
         }
     }
+}
+
+/** 파일 가져오기 타입 */
+enum class ImportFileType {
+    JSON, CSV
 }

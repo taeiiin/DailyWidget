@@ -149,4 +149,18 @@ interface DailySentenceDao {
      */
     @Query("SELECT COUNT(*) FROM daily_sentences WHERE genre = :genre")
     suspend fun getSentenceCountByGenre(genre: String): Int
+
+    // ==================== 중복 체크 (파일 가져오기용) ====================
+
+    /**
+     * 중복 문장 체크 (날짜 + 장르 + 텍스트 조합)
+     */
+    @Query("SELECT * FROM daily_sentences WHERE date = :date AND genre = :genre AND text = :text LIMIT 1")
+    suspend fun getSentenceByDateGenreText(date: String, genre: String, text: String): DailySentenceEntity?
+
+    /**
+     * 장르별 삭제 (장르 관리용)
+     */
+    @Query("DELETE FROM daily_sentences WHERE genre = :genre")
+    suspend fun deleteSentencesByGenre(genre: String): Int
 }
