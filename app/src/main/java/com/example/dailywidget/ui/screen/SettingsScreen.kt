@@ -27,6 +27,7 @@ import com.example.dailywidget.util.SentenceFileParser
 import com.example.dailywidget.util.SentenceFileValidator
 import com.example.dailywidget.ui.components.ImportFileDialog
 import com.example.dailywidget.ui.components.ExportFileDialog
+import com.example.dailywidget.ui.components.ExportAllDialog
 import com.example.dailywidget.util.TemplateGenerator
 import com.example.dailywidget.ui.components.TemplateDownloadDialog
 import kotlinx.coroutines.launch
@@ -749,6 +750,7 @@ fun SettingsScreen(
         SectionHeader(title = "문장 파일 내보내기")
 
         var showExportDialog by remember { mutableStateOf(false) }
+        var showExportAllDialog by remember { mutableStateOf(false) }
 
         Card(modifier = Modifier.fillMaxWidth()) {
             Column {
@@ -779,12 +781,7 @@ fun SettingsScreen(
                                     errorMessage = "내보낼 문장이 없습니다"
                                     showError = true
                                 } else {
-                                    // TODO: 파일 형식 선택 다이얼로그
-                                    android.widget.Toast.makeText(
-                                        context,
-                                        "전체 내보내기: ${allSentences.size}개",
-                                        android.widget.Toast.LENGTH_SHORT
-                                    ).show()
+                                    showExportAllDialog = true
                                 }
                             } catch (e: Exception) {
                                 errorMessage = "내보내기 실패: ${e.message}"
@@ -834,6 +831,25 @@ fun SettingsScreen(
                 },
                 onError = { message ->
                     showExportDialog = false
+                    errorMessage = message
+                    showError = true
+                }
+            )
+        }
+
+        // 전체 내보내기 다이얼로그
+        if (showExportAllDialog) {
+            ExportAllDialog(
+                repository = repository,
+                context = context,
+                onDismiss = { showExportAllDialog = false },
+                onSuccess = { message ->
+                    showExportAllDialog = false
+                    successMessage = message
+                    showSuccess = true
+                },
+                onError = { message ->
+                    showExportAllDialog = false
                     errorMessage = message
                     showError = true
                 }
