@@ -11,6 +11,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material.icons.filled.Celebration
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -19,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.dailywidget.data.backup.BackupManager
 import com.example.dailywidget.data.db.AppDatabase
+import com.example.dailywidget.BuildConfig
 import com.example.dailywidget.data.repository.DailySentenceRepository
 import com.example.dailywidget.util.SentenceFileExporter
 import com.example.dailywidget.data.repository.DataStoreManager
@@ -68,6 +71,12 @@ fun SettingsScreen(
     val db = AppDatabase.getDatabase(context)
     val backupManager = BackupManager(context, db)
     val dataStoreManager = DataStoreManager(context)
+
+    // 업데이트 상태
+    val updateAvailable by dataStoreManager.getUpdateAvailableFlow()
+        .collectAsState(initial = false to 0)
+    val (hasUpdate, newCount) = updateAvailable
+    var isUpdating by remember { mutableStateOf(false) }
 
     // 다이얼로그 상태
     var showBackupInfoDialog by remember { mutableStateOf(false) }
@@ -185,9 +194,87 @@ fun SettingsScreen(
         // ==================== 데이터 관리 ====================
         SectionHeader(title = "데이터 관리")
 
+        // 새 문장 업데이트 알림 (조건부 표시)
+        if (hasUpdate && newCount > 0) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.Celebration,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "새로운 문장 업데이트",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "새로운 문장 ${newCount}개가 추가되었습니다",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                        )
+                    }
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                try {
+                                    isUpdating = true
+                                    val addedCount = withContext(Dispatchers.IO) {
+                                        InitialLoadHelper.updateJsonData(context)
+                                    }
+
+                                    // 버전 업데이트 및 플래그 초기화
+                                    dataStoreManager.saveLastLoadedVersion(com.example.dailywidget.BuildConfig.VERSION_CODE)
+                                    dataStoreManager.setUpdateAvailable(false, 0)
+
+                                    successMessage = "업데이트 완료: ${addedCount}개 문장 추가됨"
+                                    showSuccess = true
+                                } catch (e: Exception) {
+                                    errorMessage = "업데이트 실패: ${e.message}"
+                                    showError = true
+                                } finally {
+                                    isUpdating = false
+                                }
+                            }
+                        },
+                        enabled = !isUpdating
+                    ) {
+                        if (isUpdating) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
+                        } else {
+                            Text("업데이트")
+                        }
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+
         Card(modifier = Modifier.fillMaxWidth()) {
             ListItem(
-                headlineContent = { Text("초기 데이터 재부팅") },
+                headlineContent = { Text("초기 데이터 재부팅 (강제)") },  // ⬅️ 텍스트 수정
                 supportingContent = { Text("초기 데이터만 업데이트 (추가한 문장 유지)") },
                 leadingContent = {
                     Icon(Icons.Default.Refresh, contentDescription = null)
@@ -195,13 +282,17 @@ fun SettingsScreen(
                 modifier = Modifier.clickable {
                     scope.launch {
                         try {
-                            withContext(Dispatchers.IO) {
+                            val addedCount = withContext(Dispatchers.IO) {
                                 InitialLoadHelper.updateJsonData(context)
                             }
 
+                            // 버전도 업데이트 (강제 업데이트이므로)
+                            dataStoreManager.saveLastLoadedVersion(com.example.dailywidget.BuildConfig.VERSION_CODE)
+                            dataStoreManager.setUpdateAvailable(false, 0)
+
                             android.widget.Toast.makeText(
                                 context,
-                                "초기 데이터가 업데이트되었습니다.",
+                                "초기 데이터가 업데이트되었습니다. (${addedCount}개 추가)",
                                 android.widget.Toast.LENGTH_SHORT
                             ).show()
                         } catch (e: Exception) {
@@ -215,8 +306,6 @@ fun SettingsScreen(
                 }
             )
         }
-
-        Spacer(modifier = Modifier.height(8.dp))
 
         // ==================== 문장 파일 가져오기 ====================
         SectionHeader(title = "문장 파일 가져오기")
@@ -374,12 +463,12 @@ fun SettingsScreen(
         var customGenres by remember { mutableStateOf<List<DataStoreManager.CustomGenre>>(emptyList()) }
         var showAddGenreDialog by remember { mutableStateOf(false) }
         var genreToDelete by remember { mutableStateOf<DataStoreManager.CustomGenre?>(null) }
-        var genreCounts by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }  // ⭐ 추가
+        var genreCounts by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
 
         LaunchedEffect(Unit) {
             customGenres = dataStoreManager.getCustomGenres()
 
-            // ⭐ 장르별 문장 개수 로드
+            // 장르별 문장 개수 로드
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 val counts = mutableMapOf<String, Int>()
 
@@ -403,7 +492,7 @@ fun SettingsScreen(
                 ListItem(
                     headlineContent = { Text("소설") },
                     supportingContent = {
-                        Text("기본 장르 • ${genreCounts["novel"] ?: 0}개 문장")  // ⭐ 수정
+                        Text("기본 장르 • ${genreCounts["novel"] ?: 0}개 문장")
                     },
                     leadingContent = {
                         Icon(Icons.Default.MenuBook, contentDescription = null)
@@ -429,7 +518,7 @@ fun SettingsScreen(
                 ListItem(
                     headlineContent = { Text("판타지") },
                     supportingContent = {
-                        Text("기본 장르 • ${genreCounts["fantasy"] ?: 0}개 문장")  // ⭐ 수정
+                        Text("기본 장르 • ${genreCounts["fantasy"] ?: 0}개 문장")
                     },
                     leadingContent = {
                         Icon(Icons.Default.AutoStories, contentDescription = null)
@@ -455,7 +544,7 @@ fun SettingsScreen(
                 ListItem(
                     headlineContent = { Text("시") },
                     supportingContent = {
-                        Text("기본 장르 • ${genreCounts["poem"] ?: 0}개 문장")  // ⭐ 수정
+                        Text("기본 장르 • ${genreCounts["poem"] ?: 0}개 문장")
                     },
                     leadingContent = {
                         Icon(Icons.Default.Article, contentDescription = null)
@@ -490,7 +579,7 @@ fun SettingsScreen(
                                         style = MaterialTheme.typography.bodySmall
                                     )
                                     Text(
-                                        "${genreCounts[genre.id] ?: 0}개 문장",  // ⭐ 추가
+                                        "${genreCounts[genre.id] ?: 0}개 문장",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.primary
                                     )
@@ -501,7 +590,7 @@ fun SettingsScreen(
                             },
                             trailingContent = {
                                 Row {
-                                    // ⭐ 내보내기 버튼 추가
+                                    // 내보내기 버튼 추가
                                     IconButton(
                                         onClick = {
                                             scope.launch {

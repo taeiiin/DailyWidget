@@ -99,7 +99,7 @@ object InitialLoadHelper {
      * JSON 데이터만 업데이트 (사용자 추가 데이터는 유지)
      * 휴리스틱: id < 10000인 데이터를 JSON 데이터로 간주
      */
-    suspend fun updateJsonData(context: Context) {
+    suspend fun updateJsonData(context: Context): Int {
         try {
             val database = AppDatabase.getDatabase(context)
             val dao = database.dailySentenceDao()
@@ -128,21 +128,81 @@ object InitialLoadHelper {
 
             // 기존 JSON 데이터 찾기 (id < 10000)
             val allData = dao.getAllSentencesList()
-            val maxJsonId = allData.filter {
-                it.date.length == 4 && it.id < 10000
-            }.maxOfOrNull { it.id } ?: 0
+            val existingJsonData = allData.filter { it.id < 10000 }
+
+            // 새로 추가: 중복 체크 (날짜 + 장르 + 텍스트)
+            val existingKeys = existingJsonData.map {
+                "${it.date}|${it.genre}|${it.text}"
+            }.toSet()
+
+            val newSentences = jsonSentences.filter {
+                "${it.date}|${it.genre}|${it.text}" !in existingKeys
+            }
 
             // JSON 데이터만 삭제
-            allData.filter { it.id <= maxJsonId }.forEach { dao.deleteSentence(it) }
+            existingJsonData.forEach { dao.deleteSentence(it) }
 
             // 새 JSON 데이터 삽입
             dao.insertSentences(jsonSentences)
 
-            android.util.Log.d("InitialLoadHelper", "JSON 데이터 업데이트 완료: ${jsonSentences.size}개")
+            android.util.Log.d("InitialLoadHelper", "JSON 데이터 업데이트 완료: 전체 ${jsonSentences.size}개, 신규 ${newSentences.size}개")
+
+            return newSentences.size  // 새 문장 개수 반환
 
         } catch (e: Exception) {
             android.util.Log.e("InitialLoadHelper", "JSON 데이터 업데이트 실패", e)
             throw e
         }
+    }
+}
+
+/**
+ * 새 버전의 문장 개수 계산 (실제 업데이트 없이 개수만 확인)
+ */
+suspend fun calculateNewSentenceCount(context: Context): Int {
+    try {
+        val database = AppDatabase.getDatabase(context)
+        val dao = database.dailySentenceDao()
+
+        // JSON 파일 읽기
+        val json = context.assets.open("sentences.json").bufferedReader().use { it.readText() }
+        val jsonArray = JSONArray(json)
+
+        val jsonSentences = mutableListOf<DailySentenceEntity>()
+
+        for (i in 0 until jsonArray.length()) {
+            val obj = jsonArray.getJSONObject(i)
+
+            val sentence = DailySentenceEntity(
+                id = 0,
+                date = obj.getString("date"),
+                genre = obj.getString("genre"),
+                text = obj.getString("text"),
+                source = obj.optString("source").takeIf { it.isNotEmpty() },
+                writer = obj.optString("writer").takeIf { it.isNotEmpty() },
+                extra = obj.optString("extra").takeIf { it.isNotEmpty() }
+            )
+
+            jsonSentences.add(sentence)
+        }
+
+        // 기존 데이터
+        val allData = dao.getAllSentencesList()
+        val existingJsonData = allData.filter { it.id < 10000 }
+
+        val existingKeys = existingJsonData.map {
+            "${it.date}|${it.genre}|${it.text}"
+        }.toSet()
+
+        // 새 문장만 필터링
+        val newSentences = jsonSentences.filter {
+            "${it.date}|${it.genre}|${it.text}" !in existingKeys
+        }
+
+        return newSentences.size
+
+    } catch (e: Exception) {
+        android.util.Log.e("InitialLoadHelper", "새 문장 개수 계산 실패", e)
+        return 0
     }
 }

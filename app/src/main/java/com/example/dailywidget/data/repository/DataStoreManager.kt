@@ -99,6 +99,11 @@ class DataStoreManager(private val context: Context) {
         private val NOTIFICATION_ENABLED = booleanPreferencesKey("notification_enabled")
         private val NOTIFICATION_HOUR = intPreferencesKey("notification_hour")
         private val NOTIFICATION_MINUTE = intPreferencesKey("notification_minute")
+
+        // 앱 버전 관리
+        private val LAST_LOADED_VERSION = intPreferencesKey("last_loaded_version")
+        private val HAS_UPDATE_AVAILABLE = booleanPreferencesKey("has_update_available")
+        private val NEW_SENTENCE_COUNT = intPreferencesKey("new_sentence_count")
     }
 
     /** 위젯 설정 데이터 클래스 */
@@ -589,6 +594,50 @@ class DataStoreManager(private val context: Context) {
                 hour = preferences[NOTIFICATION_HOUR] ?: 0,
                 minute = preferences[NOTIFICATION_MINUTE] ?: 0
             )
+        }
+    }
+
+    // ==================== 앱 버전 및 업데이트 관리 ====================
+
+    /** 마지막으로 로드된 버전 코드 저장 */
+    suspend fun saveLastLoadedVersion(versionCode: Int) {
+        context.dataStore.edit { preferences ->
+            preferences[LAST_LOADED_VERSION] = versionCode
+        }
+    }
+
+    /** 마지막으로 로드된 버전 코드 조회 */
+    suspend fun getLastLoadedVersion(): Int {
+        val preferences = context.dataStore.data.first()
+        return preferences[LAST_LOADED_VERSION] ?: 0
+    }
+
+    /** 업데이트 가능 여부 및 새 문장 개수 저장 */
+    suspend fun setUpdateAvailable(hasUpdate: Boolean, newCount: Int = 0) {
+        context.dataStore.edit { preferences ->
+            preferences[HAS_UPDATE_AVAILABLE] = hasUpdate
+            preferences[NEW_SENTENCE_COUNT] = newCount
+        }
+    }
+
+    /** 업데이트 가능 여부 조회 */
+    suspend fun hasUpdateAvailable(): Boolean {
+        val preferences = context.dataStore.data.first()
+        return preferences[HAS_UPDATE_AVAILABLE] ?: false
+    }
+
+    /** 새 문장 개수 조회 */
+    suspend fun getNewSentenceCount(): Int {
+        val preferences = context.dataStore.data.first()
+        return preferences[NEW_SENTENCE_COUNT] ?: 0
+    }
+
+    /** 업데이트 가능 여부 Flow로 관찰 */
+    fun getUpdateAvailableFlow(): Flow<Pair<Boolean, Int>> {
+        return context.dataStore.data.map { preferences ->
+            val hasUpdate = preferences[HAS_UPDATE_AVAILABLE] ?: false
+            val newCount = preferences[NEW_SENTENCE_COUNT] ?: 0
+            hasUpdate to newCount
         }
     }
 }

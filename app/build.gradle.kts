@@ -8,12 +8,12 @@ plugins {
 
 android {
     namespace = "com.example.dailywidget"
-    compileSdk = 35  // ⭐ 수정됨
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.example.dailywidget"
         minSdk = 26
-        targetSdk = 35  // ⭐ 수정됨
+        targetSdk = 35
         versionCode = 1
         versionName = "1.0"
 
@@ -46,6 +46,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -55,20 +56,20 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("com.google.android.material:material:1.10.0")
 
-    // Compose BOM (⭐ 버전 업데이트 필요!)
-    implementation(platform("androidx.compose:compose-bom:2024.11.00"))  // ⭐ 변경!
-    implementation("androidx.activity:activity-compose:1.9.3")  // ⭐ 변경!
+    // Compose BOM (버전 업데이트 필요!)
+    implementation(platform("androidx.compose:compose-bom:2024.11.00"))
+    implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.material:material-icons-extended")  // ⭐ 버전 제거
+    implementation("androidx.compose.material:material-icons-extended")
 
-    // Room Database (⭐ kapt만 사용)
+    // Room Database (kapt만 사용)
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
     implementation(libs.androidx.ui.graphics)
-    kapt("androidx.room:room-compiler:2.6.1")  // ⭐ 이게 실제로 작동해야 함!
+    kapt("androidx.room:room-compiler:2.6.1")
 
     // Gson (JSON 파싱)
     implementation("com.google.code.gson:gson:2.10.1")
@@ -78,7 +79,7 @@ dependencies {
 
     // Glide (이미지 로딩)
     implementation("com.github.bumptech.glide:glide:4.16.0")
-    kapt("com.github.bumptech.glide:compiler:4.16.0")  // ⭐ kapt 사용
+    kapt("com.github.bumptech.glide:compiler:4.16.0")
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
@@ -104,10 +105,10 @@ dependencies {
 
     implementation("com.godaddy.android.colorpicker:compose-color-picker:0.7.0")
 
-    // ⭐ 스크롤바 라이브러리
+    // 스크롤바 라이브러리
     implementation("com.github.nanihadesuka:LazyColumnScrollbar:2.2.0")
 
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")  // ⭐ 추가
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
 
 
 }
